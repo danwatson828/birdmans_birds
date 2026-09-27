@@ -1,0 +1,11 @@
+.env
+*.duckdb
+# DuckDB writes a WAL beside the database, and the snapshot is staged as .tmp
+# before its atomic rename -- neither matches *.duckdb.
+*.duckdb.wal
+*.duckdb.tmp
+__pycache__/
+.venv/
+# Cached ESPN league metadata: re-fetchable, and it mirrors a private league.
+espn_cache/
+.DS_Store

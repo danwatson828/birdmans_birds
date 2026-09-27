@@ -179,8 +179,8 @@ flowchart TD
 
 1. **Pipeline + schema** — daily ingestion, historical backfill — complete: 1,685,039 rows across 73,174 games, 5,147 players, 80 seasons (1946-2025), verified intact after an unplanned power loss
 2. **Player identity validation** — spot-check that BallDontLie's `player_id` already resolves correctly across trades/multi-team seasons (it should, as the data provider's job) — light verification, not a build
-3. **Semantic layer** — canonical metric definitions
-4. **Text-to-SQL Q&A agent** — ad hoc stat questions; validates the schema end to end
+3. **Semantic layer** — canonical metric definitions — complete: TS%/per-36/rolling views, career and season-total views, plus the three-way game classification (Section 5)
+4. **Text-to-SQL Q&A agent** — ad hoc stat questions; validates the schema end to end — complete: first live battery matched all three ground-truth-verified answers exactly (flagship road 40/12 count, career steals leaderboard, Luka's trade-split scoring) and correctly applied the era-tracking and `team_id` caveats unprompted
 5. **Fantasy league integration** — `espn-api` caching of league settings, matchups, rosters, free agents
 6. **Projection pipeline** — feature engineering, walk-forward-validated model, projections stored in DuckDB
 7. **Fantasy strategy agent** — category marginal-impact logic using projections + matchups
