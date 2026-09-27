@@ -66,6 +66,10 @@ DEFAULT_SNAPSHOT = PROJECT_ROOT / "nba_snapshot.duckdb"
 BASE_URL = "https://api.balldontlie.io/v1"
 
 FIRST_SEASON = 1946           # earliest season with data in the API
+# /stats/advanced starts in 1996 -- measured by probing all 80 seasons; 1946-1995
+# return zero rows, 1996-2025 is complete with no interior gaps. Asking for
+# earlier seasons is a wasted round trip, so backfill skips them.
+ADVANCED_FIRST_SEASON = 1996
 MAX_PER_PAGE = 100            # verified: 200+ -> HTTP 400
 RATE_LIMIT_PER_MIN = 500      # verified ceiling is 600; headroom is deliberate
 CHECKPOINT_EVERY_PAGES = 10   # bounds re-work after a crash to <=10 pages
@@ -100,6 +104,16 @@ STAT_API_COLS = ["id", "min", "fgm", "fga", "fg_pct", "fg3m", "fg3a", "fg3_pct",
                  "blk", "turnover", "pf", "pts", "plus_minus"]
 STAT_COLS = ["player_id", "game_id", "team_id"] + STAT_API_COLS
 
+# /stats/advanced. Same nesting convention as /stats, so the three ids are lifted
+# out of the nested objects exactly the same way.
+ADV_API_COLS = ["id", "pie", "pace", "assist_percentage", "assist_ratio",
+                "assist_to_turnover", "defensive_rating",
+                "defensive_rebound_percentage", "effective_field_goal_percentage",
+                "net_rating", "offensive_rating", "offensive_rebound_percentage",
+                "rebound_percentage", "true_shooting_percentage",
+                "turnover_ratio", "usage_percentage"]
+ADV_COLS = ["player_id", "game_id", "team_id"] + ADV_API_COLS
+
 
 def upsert_sql(table: str, cols: list[str], conflict: list[str]) -> str:
     """Build an idempotent INSERT ... ON CONFLICT DO UPDATE for one table.
@@ -130,6 +144,9 @@ SQL_GAMES = upsert_sql("games", GAME_COLS, ["id"])
 # business key, so a box score line re-issued by the API under a new id updates
 # in place rather than duplicating.
 SQL_STATS = upsert_sql("player_stats", STAT_COLS, ["game_id", "player_id"])
+# Same grain, same reasoning. Note the advanced row's `id` is its own sequence
+# and unrelated to player_stats.id, so the grain is the only safe conflict target.
+SQL_ADVANCED = upsert_sql("player_advanced_stats", ADV_COLS, ["game_id", "player_id"])
 
 
 # =============================================================================
@@ -324,6 +341,83 @@ def upsert_player_stats(con, rows: list[list]) -> int:
     return written
 
 
+def write_advanced_page(con, rows: list[dict]) -> int:
+    """Write one /stats/advanced page.
+
+    Teams, players and games are upserted from the nested objects here too, so an
+    advanced-only run still keeps the dimensions current and does not depend on a
+    basic-stats pass having run first.
+    """
+    teams, players, games, adv = {}, {}, {}, {}
+    for r in rows:
+        team, player, game = r.get("team"), r.get("player"), r.get("game")
+        if team:
+            teams[team["id"]] = [team.get(c) for c in TEAM_COLS]
+        if player:
+            players[player["id"]] = [player.get(c) for c in PLAYER_COLS]
+        if game:
+            games[game["id"]] = [game.get(c) for c in GAME_COLS]
+        if not (player and game):
+            continue
+        adv[(game["id"], player["id"])] = (
+            [player["id"], game["id"], (team or {}).get("id")]
+            + [r.get(c) for c in ADV_API_COLS])
+
+    con.execute("BEGIN")
+    try:
+        if teams:
+            con.executemany(SQL_TEAMS, list(teams.values()))
+        if players:
+            con.executemany(SQL_PLAYERS, list(players.values()))
+        if games:
+            con.executemany(SQL_GAMES, list(games.values()))
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+
+    if not adv:
+        return 0
+    try:
+        con.execute("BEGIN")
+        con.executemany(SQL_ADVANCED, list(adv.values()))
+        con.execute("COMMIT")
+        return len(adv)
+    except duckdb.ConstraintException:
+        # Same two-unique-constraint problem as player_stats: ON CONFLICT names
+        # the grain, so a colliding `id` still raises. Degrade to row-by-row
+        # rather than losing the whole page.
+        con.execute("ROLLBACK")
+        gi, pi, ii = (ADV_COLS.index("game_id"), ADV_COLS.index("player_id"),
+                      ADV_COLS.index("id"))
+        written = 0
+        for row in adv.values():
+            try:
+                con.execute(SQL_ADVANCED, row)
+                written += 1
+                continue
+            except duckdb.ConstraintException:
+                pass
+            try:
+                con.execute("DELETE FROM player_advanced_stats WHERE id = ? "
+                            "AND NOT (game_id = ? AND player_id = ?)",
+                            [row[ii], row[gi], row[pi]])
+                con.execute(SQL_ADVANCED, row)
+                written += 1
+            except duckdb.ConstraintException as exc:
+                print(f"      SKIPPED anomalous advanced row id={row[ii]} "
+                      f"game={row[gi]} player={row[pi]}: {exc}", flush=True)
+                log_id = con.execute("SELECT nextval('_ingest_log_seq')").fetchone()[0]
+                con.execute(
+                    """INSERT INTO _ingest_log (id, endpoint, params, started_at,
+                                                finished_at, error)
+                       VALUES (?, 'advanced:anomaly', ?, current_timestamp,
+                               current_timestamp, ?)""",
+                    [log_id, json.dumps({"stat_id": row[ii], "game_id": row[gi],
+                                         "player_id": row[pi]}), str(exc)[:400]])
+        return written
+
+
 def write_page(con, stat_rows: list[dict]) -> int:
     """Write one /stats page to all four tables.
 
@@ -368,8 +462,15 @@ def write_page(con, stat_rows: list[dict]) -> int:
 # =============================================================================
 def ingest_unit(con, client: Client, key: str, query: list[tuple],
                 season: int | None, extra: dict, force: bool,
-                max_pages: int | None = None) -> tuple[int, str]:
-    """Page /stats for one unit, resuming from a checkpoint when there is one."""
+                max_pages: int | None = None, endpoint: str = "stats",
+                writer=None) -> tuple[int, str]:
+    """Page one endpoint for one unit, resuming from a checkpoint when there is one.
+
+    endpoint/writer default to the basic box-score path so existing call sites
+    and, critically, existing checkpoint keys are unchanged -- the 160 completed
+    'backfill:...' units stay complete and are not re-read.
+    """
+    writer = writer or write_page
     status, cursor, rows_so_far = checkpoint_lookup(con, key)
     if status == "complete":
         if not force:
@@ -379,7 +480,7 @@ def ingest_unit(con, client: Client, key: str, query: list[tuple],
         cursor, rows_so_far = None, 0
 
     resumed = cursor is not None
-    log_id = checkpoint_start(con, "stats", key, season, extra, cursor, rows_so_far)
+    log_id = checkpoint_start(con, endpoint, key, season, extra, cursor, rows_so_far)
     total = rows_so_far
     pages = 0
     label = f"resume@{cursor}" if resumed else "fresh"
@@ -389,11 +490,11 @@ def ingest_unit(con, client: Client, key: str, query: list[tuple],
             params = list(query) + [("per_page", str(MAX_PER_PAGE))]
             if cursor is not None:
                 params.append(("cursor", str(cursor)))
-            payload = client.get("stats", params)
+            payload = client.get(endpoint, params)
             batch = payload.get("data", [])
             if not batch:
                 break
-            total += write_page(con, batch)
+            total += writer(con, batch)
             pages += 1
             cursor = payload.get("meta", {}).get("next_cursor")
             if pages % CHECKPOINT_EVERY_PAGES == 0:
@@ -505,7 +606,8 @@ def latest_season(today: dt.date | None = None) -> int:
 
 
 def run_backfill(con, client: Client, seasons: list[int], force: bool,
-                 max_pages: int | None) -> int:
+                 max_pages: int | None, skip_advanced: bool = False,
+                 advanced_only: bool = False) -> int:
     """Returns the number of units that failed, so the caller can decide
     whether the run was clean enough to publish a snapshot."""
     print(f"backfill: {len(seasons)} season(s) "
@@ -518,7 +620,7 @@ def run_backfill(con, client: Client, seasons: list[int], force: bool,
         # Regular season and postseason are paged as separate units. Being
         # explicit removes any reliance on what the API does when `postseason` is
         # omitted, and halves the amount of re-work a crash costs.
-        for postseason in (False, True):
+        for postseason in (() if advanced_only else (False, True)):
             key = unit_key("backfill", season=season, postseason=postseason)
             query = [("seasons[]", str(season)),
                      ("postseason", "true" if postseason else "false")]
@@ -532,6 +634,27 @@ def run_backfill(con, client: Client, seasons: list[int], force: bool,
             if outcome.startswith("FAILED"):
                 failed += 1
             print(f"    -> {rows:,} rows, {outcome}", flush=True)
+
+        # Advanced stats for the same season, under a SEPARATE checkpoint key
+        # prefix ('advanced:' not 'backfill:') so the 160 already-complete basic
+        # units are untouched and never re-read.
+        if not skip_advanced and season >= ADVANCED_FIRST_SEASON:
+            for postseason in (False, True):
+                key = unit_key("advanced", season=season, postseason=postseason)
+                query = [("seasons[]", str(season)),
+                         ("postseason", "true" if postseason else "false")]
+                tag = "post" if postseason else "reg "
+                print(f"  season {season} {tag} advanced", flush=True)
+                rows, outcome = ingest_unit(
+                    con, client, key, query, season,
+                    {"kind": "advanced", "season": season,
+                     "postseason": postseason},
+                    force, max_pages,
+                    endpoint="stats/advanced", writer=write_advanced_page)
+                grand += rows if outcome != "skipped" else 0
+                if outcome.startswith("FAILED"):
+                    failed += 1
+                print(f"    -> {rows:,} rows, {outcome}", flush=True)
     print(f"\nbackfill wrote {grand:,} rows using {client.request_count} requests")
     if failed:
         print(f"WARNING: {failed} unit(s) failed -- re-run to resume them")
@@ -539,7 +662,8 @@ def run_backfill(con, client: Client, seasons: list[int], force: bool,
 
 
 def run_daily(con, client: Client, days: int,
-              end_date: dt.date | None = None) -> int:
+              end_date: dt.date | None = None,
+              skip_advanced: bool = False) -> int:
     """Pull the last `days` days, ending at `end_date` (default today).
 
     end_date exists for two reasons: the mode is untestable in the offseason
@@ -568,6 +692,17 @@ def run_daily(con, client: Client, days: int,
         if outcome.startswith("FAILED"):
             failed += 1
         print(f"    -> {rows:,} rows, {outcome}", flush=True)
+
+        if not skip_advanced:
+            arows, aoutcome = ingest_unit(
+                con, client, unit_key("daily_advanced", date=date),
+                [("dates[]", date)], None,
+                {"kind": "daily_advanced", "date": date}, force=True,
+                endpoint="stats/advanced", writer=write_advanced_page)
+            total += arows
+            if aoutcome.startswith("FAILED"):
+                failed += 1
+            print(f"    -> {arows:,} advanced rows, {aoutcome}", flush=True)
     print(f"\ndaily wrote {total:,} rows using {client.request_count} requests")
     if failed:
         print(f"WARNING: {failed} day(s) failed -- re-run to resume them")
@@ -576,7 +711,8 @@ def run_daily(con, client: Client, days: int,
 
 def summarise(con) -> None:
     print("\ntable counts:")
-    for table in ("teams", "players", "games", "player_stats"):
+    for table in ("teams", "players", "games", "player_stats",
+                  "player_advanced_stats"):
         n = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
         print(f"  {table:<14} {n:>12,}")
     span = con.execute("SELECT min(season), max(season), min(date), max(date) "
@@ -589,11 +725,12 @@ def summarise(con) -> None:
         """SELECT count(*) FROM (
                SELECT max_by(json_extract_string(params, '$.status'), id) AS status
                  FROM _ingest_log
-                WHERE endpoint = 'stats'
+                WHERE endpoint IN ('stats', 'stats/advanced')
                 GROUP BY json_extract_string(params, '$.unit'))
             WHERE status IS DISTINCT FROM 'complete'""").fetchone()[0]
     anomalies = con.execute(
-        "SELECT count(*) FROM _ingest_log WHERE endpoint = 'stats:anomaly'").fetchone()[0]
+        "SELECT count(*) FROM _ingest_log "
+        "WHERE endpoint IN ('stats:anomaly', 'advanced:anomaly')").fetchone()[0]
     print(f"  unfinished units: {incomplete}   anomalous rows skipped: {anomalies}")
     if incomplete:
         print("  (re-run the same command to resume them)")
@@ -629,6 +766,10 @@ def main() -> int:
     ap.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT,
                     help=f"where to publish the readable copy "
                          f"(default {DEFAULT_SNAPSHOT.name})")
+    ap.add_argument("--skip-advanced", action="store_true",
+                    help="do not ingest /stats/advanced (covers 1996+ only)")
+    ap.add_argument("--advanced-only", action="store_true",
+                    help="backfill ONLY advanced stats, leaving box scores alone")
     ap.add_argument("--no-snapshot", action="store_true",
                     help="skip publishing the snapshot after a successful run")
     args = ap.parse_args()
@@ -657,15 +798,18 @@ def main() -> int:
                 seasons = list(range(args.from_season, hi + 1))
                 if args.order == "newest":
                     seasons.reverse()
-            failed = run_backfill(con, client, seasons, args.force, args.max_pages)
+            failed = run_backfill(con, client, seasons, args.force, args.max_pages,
+                                  skip_advanced=args.skip_advanced,
+                                  advanced_only=args.advanced_only)
         else:
-            failed = run_daily(con, client, args.days, args.end_date)
+            failed = run_daily(con, client, args.days, args.end_date,
+                               skip_advanced=args.skip_advanced)
         summarise(con)
         unfinished = con.execute(
             """SELECT count(*) FROM (
                    SELECT max_by(json_extract_string(params, '$.status'), id) AS status
                      FROM _ingest_log
-                    WHERE endpoint = 'stats'
+                    WHERE endpoint IN ('stats', 'stats/advanced')
                     GROUP BY json_extract_string(params, '$.unit'))
                 WHERE status IS DISTINCT FROM 'complete'""").fetchone()[0]
 

@@ -24,6 +24,7 @@ from . import checks_integrity      # noqa: F401
 from . import checks_classification # noqa: F401
 from . import checks_official       # noqa: F401
 from . import checks_regressions    # noqa: F401
+from . import checks_advanced       # noqa: F401
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = PROJECT_ROOT / "nba.duckdb"

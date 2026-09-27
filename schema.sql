@@ -252,6 +252,73 @@ CREATE TABLE IF NOT EXISTS player_stats (
 );
 
 -- -----------------------------------------------------------------------------
+-- player_advanced_stats  (advanced metrics: one row per player per game)
+-- -----------------------------------------------------------------------------
+-- Verified shape: GET /v1/stats/advanced on the GOAT tier, 2026-09-27.
+--   {"id":3296931,"pie":0.021,"pace":94.83,"assist_percentage":0.097,
+--    "assist_ratio":27.3,"assist_to_turnover":0,"defensive_rating":154.5,
+--    "defensive_rebound_percentage":0.156,
+--    "effective_field_goal_percentage":0.143,"net_rating":-37.2,
+--    "offensive_rating":117.4,"offensive_rebound_percentage":0,
+--    "rebound_percentage":0.082,"true_shooting_percentage":0.254,
+--    "turnover_ratio":0,"usage_percentage":0.108,
+--    "player":{...},"team":{...},"game":{...}}
+--
+-- ERA COVERAGE IS MUCH NARROWER THAN THE BOX SCORES. Measured by probing every
+-- season from 1946 to 2025: the first season with any advanced rows is 1996,
+-- and 1996-2025 is complete with no interior gaps. The 50 seasons from 1946 to
+-- 1995 return zero rows. So this table covers 30 of the 80 seasons in `games`,
+-- and any join against it silently drops everything before 1996 -- which is a
+-- LEFT JOIN decision, not an inner-join one, unless the query is scoped to
+-- 1996+ on purpose. v_stat_first_tracked records this alongside the box-score
+-- stats so one place answers the era question.
+--
+-- All 16 scalar fields were present with zero NULLs across 700 rows sampled
+-- from 1996, 2000, 2001, 2010, 2020, 2024 and 2025, so unlike the box-score
+-- table there is no within-era sparsity to work around. Values arrive as JSON
+-- numbers that are sometimes integral (assist_to_turnover: 0) and sometimes
+-- fractional, hence DOUBLE throughout.
+--
+-- Percentage fields are FRACTIONS, not percentages: usage_percentage 0.108
+-- means 10.8%. The ratio and rating fields are on their own scales
+-- (assist_ratio 27.3, offensive_rating 117.4), and the ratings are per-game and
+-- therefore wild in small samples -- a defensive_rating of 154.5 in one game is
+-- normal noise, not an outlier to clean.
+--
+-- Nested objects follow the /stats convention exactly (player carries a
+-- flattened team_id; game carries flattened home_team_id / visitor_team_id), so
+-- ingestion reuses the same writer.
+--
+-- Its `id` is its own sequence, unrelated to player_stats.id -- the advanced row
+-- for a game is id 3296931 while the box score row for the same game is in the
+-- 15-million range. Join on (game_id, player_id), never on id. Both `id` and
+-- (game_id, player_id) were verified unique across a 2,000-row paged pull.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS player_advanced_stats (
+    id                                BIGINT PRIMARY KEY,
+    player_id                         INTEGER NOT NULL,
+    game_id                           INTEGER NOT NULL,
+    team_id                           INTEGER,
+    pie                               DOUBLE,   -- player impact estimate
+    pace                              DOUBLE,
+    assist_percentage                 DOUBLE,   -- fraction, not percent
+    assist_ratio                      DOUBLE,
+    assist_to_turnover                DOUBLE,
+    defensive_rating                  DOUBLE,
+    defensive_rebound_percentage      DOUBLE,
+    effective_field_goal_percentage   DOUBLE,
+    net_rating                        DOUBLE,
+    offensive_rating                  DOUBLE,
+    offensive_rebound_percentage      DOUBLE,
+    rebound_percentage                DOUBLE,
+    true_shooting_percentage          DOUBLE,
+    turnover_ratio                    DOUBLE,
+    usage_percentage                  DOUBLE,
+    _ingested_at                      TIMESTAMP DEFAULT current_timestamp,
+    UNIQUE (game_id, player_id)
+);
+
+-- -----------------------------------------------------------------------------
 -- _ingest_log — bookkeeping for the daily job (built in the next step)
 -- -----------------------------------------------------------------------------
 -- Not an API table. Exists so the ingestion script has somewhere to record
