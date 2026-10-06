@@ -903,28 +903,30 @@ function SearchLanding({ onOpenPlayer, onOpenTeam, hits }) {
 
   const row = (t) => {
     const b = t.brand || {};
-    const pct = t.last_win_pct;
-    return h("tr", { key: t.team_id, className: "team-row",
+    const wp = t.last_win_pct;
+    // A colour EDGE, a crest and the last-season record, which is what the
+    // list is read for. The edge is a td rather than a border so it reads as
+    // a deliberate rail at the row's full height.
+    return h("tr", { key: t.team_id, className: "team-row trow",
         style: { cursor: "pointer", ...teamStyle(b) },
         onClick: () => onOpenTeam(t.team_id) },
+      h("td", { className: "edge", "aria-hidden": "true" }),
       h("td", { className: "name" },
         h(Crest, { brand: b, size: "sm", alt: "" }),
-        h("span", { style: { marginLeft: 9, fontWeight: 600 } }, t.full_name)),
-      h("td", { className: "faint" }, t.abbreviation),
-      h("td", { style: { fontWeight: 650 } },
-        t.last_wins == null ? "—" : record(t.last_wins, t.last_losses)),
-      h("td", { className: pct == null ? "" : pct >= 0.5 ? "margin pos" : "margin neg" },
-        pct == null ? "—" : pct.toFixed(3)),
-      // Seasons and total games were dropped when the conferences went
-      // side by side: at half width they pushed all-time win% off the edge,
-      // and they are the two least-used columns on this page.
+        h("span", { className: "tname" }, t.full_name)),
+      h("td", { className: "faint abbr" }, t.abbreviation),
+      h("td", { className: "rec" },
+        t.last_wins == null ? "\u2014" : record(t.last_wins, t.last_losses)),
+      h("td", { className: wp == null ? "" : wp >= 0.5 ? "pos" : "neg" },
+        wp == null ? "\u2014" : wp.toFixed(3)),
       h("td", { className: "faint" },
-        t.win_pct != null ? t.win_pct.toFixed(3) : "—"));
+        t.win_pct != null ? t.win_pct.toFixed(3) : "\u2014"));
   };
 
   const head = h("thead", null, h("tr", null,
+    h("th", { className: "edge", "aria-hidden": "true" }),
     h("th", { className: "name" }, "Team"), h("th", null, "Abbr"),
-    h("th", null, `${d.last_season}–${String(d.last_season + 1).slice(2)}`),
+    h("th", null, `${d.last_season}\u2013${String(d.last_season + 1).slice(2)}`),
     h("th", null, "Win %"), h("th", null, "All-time")));
 
   return h("div", null,

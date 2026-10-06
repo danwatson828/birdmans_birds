@@ -26,7 +26,7 @@ alone.**
 |---|---|---|
 | 0 | Shared table-header bug + standing check | **done** (accepted, do not redo) |
 | 1 | Overview rework | **done** |
-| 2 | Teams | not started |
+| 2 | Teams | **done** |
 | 3 | Players directory (comparison lives inside) | not started |
 | 4 | Leaderboards (top-N cards) | not started |
 | 5 | League evolution (explorable) | not started |
@@ -115,6 +115,27 @@ concurrent `/api/home` against 6 `/api/fantasy/matchup` -- 0 crossed responses.
 
 This is an api.py change, but it is a correctness fix, not a semantic one: no
 endpoint's contract changed, they just stopped returning each other's rows.
+
+## Item 2 — Teams (done)
+
+East and West side by side, divisions grouped, each row carrying the crest,
+the last-season record, win% coded win/loss, and a **franchise colour edge**
+(its own 4px cell rather than a border, so it does not fight the row
+hairline). All 30 franchises on one screen; no clipping at 1340 (table 538 in
+a 540 box).
+
+### `--team-safe` was broken and is now actually applied
+
+`teamStyle()` never set it, and the CSS fallback `--team-safe: var(--team)` on
+`:root` is silently wrong: a custom property is substituted where it is
+DECLARED, so it computed once at :root against the root `--team` and every
+descendant inherited that one neutral value. **The Portland correction has
+never applied since it was introduced.**
+
+Now computed per element by `textSafe()` in `lib.js` (multiplicative lightness
+steps, memoised). Verified in the live page: POR `#e03a3e` -> `#de3034`, and a
+no-op for BOS/LAL/ATL/NYK. The teams list went from 1 distinct edge colour to
+22.
 
 ## Baseline to beat
 

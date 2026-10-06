@@ -179,8 +179,64 @@ export const brandOf = (brands, teamId) =>
     logo: null, branded: false };
 
 /** Inline style object that drives every `var(--team*)` rule in the stylesheet. */
+/* The franchise colour darkened until WHITE text on it clears 4.5:1.
+ *
+ * This MUST be computed per element in JS. The obvious CSS version --
+ * `--team-safe: var(--team)` on :root -- looks right and is silently wrong: a
+ * custom property's value is substituted where it is DECLARED, so --team-safe
+ * computed once at :root against the root --team and every descendant then
+ * inherited that one neutral value. The Portland correction never applied.
+ *
+ * Multiplicative lightness steps, not subtractive: that is the rule that was
+ * derived and signed off, and it reproduces #de3034 for Portland exactly. It
+ * is a no-op for 29 of the 30 franchises.
+ */
+const _safeCache = new Map();
+export function textSafe(hex) {
+  if (!hex || hex[0] !== "#" || hex.length !== 7) return hex;
+  if (_safeCache.has(hex)) return _safeCache.get(hex);
+  const n = parseInt(hex.slice(1), 16);
+  let [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const lum = (R, G, B) => {
+    const f = (c) => { c /= 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(R) + 0.7152 * f(G) + 0.0722 * f(B);
+  };
+  const ratio = (R, G, B) => 1.05 / (lum(R, G, B) + 0.05);   // white on it
+  // rgb -> hsl -> scale L -> rgb
+  const mx = Math.max(r, g, b) / 255, mn = Math.min(r, g, b) / 255;
+  const l0 = (mx + mn) / 2, dl = mx - mn;
+  const sat = dl === 0 ? 0 : dl / (1 - Math.abs(2 * l0 - 1));
+  let hue = 0;
+  if (dl !== 0) {
+    const R = r / 255, G = g / 255, B = b / 255;
+    hue = mx === R ? ((G - B) / dl) % 6 : mx === G ? (B - R) / dl + 2 : (R - G) / dl + 4;
+    hue *= 60; if (hue < 0) hue += 360;
+  }
+  const toRgb = (L) => {
+    const c = (1 - Math.abs(2 * L - 1)) * sat, x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+    const m = L - c / 2;
+    const [rr, gg, bb] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0]
+      : hue < 180 ? [0, c, x] : hue < 240 ? [0, x, c]
+      : hue < 300 ? [x, 0, c] : [c, 0, x];
+    return [Math.round((rr + m) * 255), Math.round((gg + m) * 255), Math.round((bb + m) * 255)];
+  };
+  let out = hex;
+  for (let f = 1.0; f > 0.3; f -= 0.02) {
+    const [R, G, B] = toRgb(Math.max(0, l0 * f));
+    if (ratio(R, G, B) >= 4.5) {
+      out = "#" + [R, G, B].map((v) => v.toString(16).padStart(2, "0")).join("");
+      break;
+    }
+  }
+  _safeCache.set(hex, out);
+  return out;
+}
+
+/** Inline style object that drives every `var(--team*)` rule in the stylesheet. */
 export const teamStyle = (b) => b ? {
   "--team": b.primary, "--team-accent": b.accent, "--team-ink": b.ink,
+  "--team-safe": textSafe(b.primary),
 } : {};
 
 /** A crest, or nothing at all -- never a placeholder box standing in for one. */

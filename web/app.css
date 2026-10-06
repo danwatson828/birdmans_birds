@@ -479,6 +479,21 @@ code, pre { font-family: var(--mono); }
 .entry p { margin: 0; font-size: var(--t-sm); color: var(--muted); }
 .entry a.lead p { color: rgba(255,255,255,.9); }
 
+/* ---- teams list rows ----------------------------------------------------
+   Crest, name, last-season record, and a franchise colour edge running the
+   row's full height. The edge is its own cell rather than a border so it does
+   not fight the hairline between rows. */
+.trow .edge { width: 4px; min-width: 4px; padding: 0;
+              background: var(--team-safe); }
+.trow .tname { margin-left: 8px; font-weight: 600; }
+.trow td.name { display: flex; align-items: center; height: var(--row); }
+.trow td.abbr { font-family: var(--mono); }
+.trow td.rec { font-weight: 600; color: var(--ink); }
+.trow td.pos { color: var(--win); font-weight: 600; }
+.trow td.neg { color: var(--loss); font-weight: 600; }
+.trow:hover td { background: color-mix(in srgb, var(--team-safe) 7%, #fff); }
+.trow:hover td.edge { background: var(--team-safe); }
+
 /* --------------------------------------------------------------- division --
    Teams grouped East/West by division, as columns rather than six stacked
    tables. */
