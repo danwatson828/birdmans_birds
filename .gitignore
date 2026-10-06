@@ -9,3 +9,15 @@ __pycache__/
 # Cached ESPN league metadata: re-fetchable, and it mirrors a private league.
 espn_cache/
 .DS_Store
+# Snapshot checksum sidecar, derived from an ignored file.
+*.duckdb.sha256
+# Analysis store: generated data, not source. SQLite in WAL mode keeps two
+# sidecars beside it that are meaningless without the live database.
+analyses.db
+analyses.db-shm
+analyses.db-wal
+# Generated artefacts, not source: the built Claude Extension bundle and any
+# exported reports/presentations. Listed so `git add -A` cannot sweep them in.
+dist/
+exports/
+presentations/

@@ -101,7 +101,7 @@ def fetch_raw_settings(league_id: int, season: int, swid: str, s2: str) -> dict:
     """
     r = requests.get(f"{LM_API}/{season}/segments/0/leagues/{league_id}",
                      headers=UA, cookies={"SWID": braced(swid), "espn_s2": s2},
-                     params={"view": ["mSettings"]}, timeout=30)
+                     params={"view": ["mSettings", "mDraftDetail"]}, timeout=30)
     r.raise_for_status()
     return r.json()
 
@@ -138,6 +138,45 @@ def extract_roster_rules(raw: dict) -> dict:
         "bench": slots.get("BE", 0),
         "injured_reserve": slots.get("IR", 0),
         "roster_total": sum(slots.values()),
+    }
+
+
+def extract_draft_settings(raw: dict) -> dict:
+    """Draft format, keeper rule and pick order, from the raw payload.
+
+    espn_api exposes none of this, and the original version of this script did
+    not capture it -- so the draft format had to be re-fetched by hand when the
+    draft board needed it.
+
+    Two caveats recorded alongside the data rather than in someone's head:
+    `auctionBudget` is populated even for a SNAKE league and means nothing there;
+    and because ESPN echoes prior-season data before a draft (section 2), the
+    pick order should be confirmed in the app before anything depends on it.
+    """
+    ds = (raw.get("settings") or {}).get("draftSettings") or {}
+    detail = raw.get("draftDetail") or {}
+    date_ms = ds.get("date")
+    return {
+        "type": ds.get("type"),
+        "is_snake": ds.get("type") == "SNAKE",
+        "date_epoch_ms": date_ms,
+        "date_local": (dt.datetime.fromtimestamp(date_ms / 1000).astimezone()
+                       .isoformat(timespec="minutes") if date_ms else None),
+        "date_configured": bool(date_ms),
+        "keeper_count": ds.get("keeperCount"),
+        "keeper_count_future": ds.get("keeperCountFuture"),
+        "keeper_order_type": ds.get("keeperOrderType"),
+        "order_type": ds.get("orderType"),
+        "pick_order_team_ids": ds.get("pickOrder"),
+        "time_per_selection_s": ds.get("timePerSelection"),
+        "trading_enabled_during_draft": ds.get("isTradingEnabled"),
+        # Populated even for snake leagues, where it is meaningless.
+        "auction_budget_vestigial_if_snake": ds.get("auctionBudget"),
+        "total_picks": len(detail.get("picks") or []) or None,
+        "drafted": detail.get("drafted"),
+        "in_progress": detail.get("inProgress"),
+        "pick_order_caveat": ("ESPN echoes prior-season data before a draft; "
+                              "confirm this order in the app before relying on it"),
     }
 
 
@@ -350,6 +389,26 @@ def verify(cache: dict) -> list[dict]:
         add("matchup category wins + losses + ties == category count", True,
             "SKIPPED - no scored matchup yet this season")
 
+    d = cache.get("draft") or {}
+    add("draft format is present and is snake or auction",
+        d.get("type") in ("SNAKE", "AUCTION"), str(d.get("type")))
+    if d.get("total_picks") and meta.get("size"):
+        add("total draft picks divide evenly by league size",
+            d["total_picks"] % meta["size"] == 0,
+            f"{d['total_picks']} picks / {meta['size']} teams = "
+            f"{d['total_picks'] / meta['size']:.2f} rounds")
+    else:
+        add("total draft picks divide evenly by league size", True,
+            "SKIPPED - no pick list in the payload")
+    po = d.get("pick_order_team_ids") or []
+    if po:
+        add("pick order lists every team exactly once",
+            sorted(po) == sorted({t["team_id"] for t in cache["standings"]}),
+            f"{len(po)} entries, {len(set(po))} distinct")
+    else:
+        add("pick order lists every team exactly once", True,
+            "SKIPPED - no pick order configured")
+
     rr = cache["roster_rules"]
     add("starting slots + bench + IR == total roster slots",
         rr["starters_total"] + rr["bench"] + rr["injured_reserve"] == rr["roster_total"],
@@ -405,6 +464,7 @@ def sync(league_id: int, season: int, swid: str, s2: str, my_team_id: int | None
         "league_id": league_id,
         "league": meta,
         "scoring": {"categories": extract_categories(raw)},
+        "draft": extract_draft_settings(raw),
         "roster_rules": extract_roster_rules(raw),
         "my_team": {
             "team_id": me.team_id,
@@ -416,6 +476,17 @@ def sync(league_id: int, season: int, swid: str, s2: str, my_team_id: int | None
         "standings": [{"team_id": t.team_id, "name": t.team_name,
                        "wins": t.wins, "losses": t.losses,
                        "ties": getattr(t, "ties", None)} for t in lg.teams],
+        # Every roster, not just the user's. A trade finder, a keeper
+        # comparison and an opponent preview all need to know who else holds
+        # whom, and none of them can be built from standings alone. Same
+        # player_dict shape as my_team.roster so a consumer does not need to
+        # know which list a player came from.
+        "teams": [{"team_id": t.team_id, "name": t.team_name,
+                   "wins": t.wins, "losses": t.losses,
+                   "ties": getattr(t, "ties", None),
+                   "is_me": t.team_id == my_team_id,
+                   "roster": [player_dict(p) for p in t.roster]}
+                  for t in lg.teams],
         "free_agents": [player_dict(p) for p in lg.free_agents(size=n_free_agents)],
     }
 
@@ -441,6 +512,31 @@ def summarise(cache: dict, checks: list[dict]) -> None:
           f"{L['waiver_hours']}h)")
     print(f"  currentMatchupPeriod={L['current_matchup_period']} "
           f"latestScoringPeriod={L['latest_scoring_period']}")
+
+    d = cache.get("draft") or {}
+    print(f"\nDRAFT")
+    print(f"  format: {d.get('type')}"
+          + ("  (auctionBudget is present but vestigial for a snake league)"
+             if d.get("is_snake") and d.get("auction_budget_vestigial_if_snake")
+             else ""))
+    print(f"  date: {d.get('date_local') or 'NOT CONFIGURED IN ESPN'}")
+    print(f"  keepers: {d.get('keeper_count')} per team "
+          f"({d.get('keeper_order_type')} order)")
+    print(f"  total picks: {d.get('total_picks')}"
+          + (f" = {cache['league']['size']} teams x "
+             f"{d['total_picks'] // cache['league']['size']} rounds"
+             if d.get("total_picks") and cache["league"].get("size") else ""))
+    print(f"  {d.get('time_per_selection_s')}s per pick, trading during draft: "
+          f"{d.get('trading_enabled_during_draft')}")
+    print(f"  drafted: {d.get('drafted')}   in progress: {d.get('in_progress')}")
+    po = d.get("pick_order_team_ids") or []
+    if po:
+        mine = cache["my_team"]["team_id"]
+        pos = po.index(mine) + 1 if mine in po else None
+        print(f"  pick order (team ids): {po}")
+        if pos:
+            print(f"  -> your team ({mine}) picks {pos} of {len(po)} in round 1")
+        print(f"  CAVEAT: {d.get('pick_order_caveat')}")
 
     cats = cache["scoring"]["categories"]
     print(f"\nSCORING CATEGORIES ({len(cats)})")

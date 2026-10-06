@@ -1,0 +1,1310 @@
+/* ============================================================================
+   nba-analytics — design system
+   ----------------------------------------------------------------------------
+   The previous two passes drove toward restraint and arrived at monotone: one
+   warm grey carrying every surface, one muted clay allowed to appear, and the
+   result read as absence of decision rather than decision. This pass reverses
+   that. The subject is a league of thirty franchises with strong identities and
+   results that are won or lost; the interface should look like it knows that.
+
+   Three rules decide where colour goes:
+
+     1. TEAM colour is the franchise's own, applied where you are looking at
+        that franchise — never as site chrome. It arrives as custom properties
+        (--team, --team-accent, --team-ink) set inline on a themed element, so
+        one stylesheet serves thirty identities.
+     2. DATA colour encodes a value, never a mood: wins green, losses red,
+        above/below average on a shared diverging ramp. If it is coloured it
+        means something, and the same hue means the same thing everywhere.
+     3. STRUCTURE stays neutral and light. Paper ground, ink text, hairlines.
+        Colour is a figure on that ground, which is what makes it legible.
+
+   Typography carries hierarchy by CONTRAST, not by uniform quietness: a display
+   serif at 40px for page titles against 11px uppercase sans labels is a four-
+   times size ratio, and that ratio is the hierarchy. Previously everything sat
+   between 12 and 27px and nothing led.
+   ========================================================================== */
+:root {
+  /* --- PHASE 8e: Direction B fields and chips, Direction C density ---------
+     Token NAMES are unchanged again. 800 lines of rules, thirty team themes
+     and the print block are bound to them; re-skinning by renaming would be a
+     rewrite wearing a retune's clothes.
+
+     What changed from 8d: the ground cooled slightly so saturated franchise
+     colour reads as figure rather than as a stain on warm paper; the type and
+     space scales tightened (earlier feedback: too big and blocky); the sans is
+     now Archivo, carrying weight AND width axes so condensed uppercase labels
+     come from the same file as body text.
+
+     CONTRAST IS A FLOOR. Every token used as a text colour clears 4.5:1 on all
+     three grounds, held by tests/checks_design.py::text_tokens_meet_contrast. */
+  --n0:  #ffffff;
+  --n1:  #f7f8fa;   /* page ground      */
+  --n2:  #eef1f5;   /* sunken / hover   */
+  --n3:  #e3e7ed;   /* hairline         */
+  --n4:  #d2d8e1;   /* border           */
+  --n5:  #aab3c0;   /* NON-TEXT only    */
+  --n6:  #5f6875;   /* faint  -- 5.04 worst ground */
+  --n7:  #4e5765;   /* muted  -- 6.33 */
+  --n8:  #333b47;   /* secondary -- 9.93 */
+  --n9:  #121820;   /* ink    -- 16.75 */
+
+  --paper:  var(--n1);
+  --card:   var(--n0);
+  --sunken: var(--n2);
+  --ink:    var(--n9);
+  --ink-2:  var(--n8);
+  --muted:  var(--n7);
+  --faint:  var(--n6);
+  --rule:   var(--n4);
+  --rule-2: var(--n3);
+
+  --accent:   #11417f;
+  --accent-2: #0c3167;
+  --accent-w: #e8eefa;
+  --accent-r: #bed0ea;
+  --focus:    #11417f;
+
+  --win:  #0f6b42;  --win-w:  #e4f2eb;  --win-r:  #a6d2bb;
+  --loss: #a82f27;  --loss-w: #fbe9e7;  --loss-r: #eeb9b3;
+  --good: var(--win);  --good-w: var(--win-w);  --good-r: var(--win-r);
+  --bad:  var(--loss); --bad-w:  var(--loss-w); --bad-r:  var(--loss-r);
+  --warn: #7a5206;  --warn-w: #fcf2de;  --warn-r: #e7d0a0;
+
+  --pos-3: #0b5c39; --pos-2: #3c8c65; --pos-1: #cbe4d6;
+  --neg-1: #f5d1cb; --neg-2: #cb6054; --neg-3: #93261d;
+
+  --c1: #11417f; --c2:  #a82f27; --c3: #0f6b42; --c4: #67429a; --c5:  #86620a;
+  --c6: #2a7986; --c7:  #913d6b; --c8: #47620f; --c9: #984715; --c10: #3c4668;
+
+  --cov-full: #2d7a51; --cov-part: #96680f; --cov-none: #ad3c2b;
+  --cov-missing: #e3e7ed;
+
+  --chart-grid: #e3e7ed; --chart-axis: #4e5765; --chart-ink: #121820;
+
+  /* --- team theming ------------------------------------------------------
+     --team        the curated franchise colour, set inline from /api/brand.
+     --team-ink    the foreground the brand declares for ON that colour.
+     --team-safe   --team darkened until WHITE clears 4.5:1 on it.
+
+     Direction B puts white text on a field of franchise colour, so --team-safe
+     is load-bearing now rather than reserve. teamStyle() computes it: equal to
+     --team for 29 of 30 franchises, and #e03a3e -> #de3034 for Portland, whose
+     raw colour fails against white (4.34) AND against near-black (4.36), so no
+     choice of text colour fixes it and the swatch itself has to move. */
+  --team:        #333b47;
+  --team-accent: #5f6875;
+  --team-ink:    #ffffff;
+  --team-safe:   var(--team);
+
+  /* --- type -------------------------------------------------------------
+     Archivo for everything structural, IBM Plex Mono for every figure, and
+     Source Serif 4 for REPORT PROSE ONLY -- the body of a saved analysis,
+     where a person reads paragraphs instead of scanning a column. It is no
+     longer the headline face; a serif headline over a dense table read as a
+     magazine pretending to be an instrument. */
+  --serif: "Source Serif 4", Charter, Georgia, serif;
+  --sans:  "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:  "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Tightened: the previous ramp topped out at 42px and every page opened with
+     a banner. 10.5 -> 12 -> 13.5 -> 15.5 -> 19 -> 24 -> 30 -> 38 */
+  --t-xs: 10.5px; --t-sm: 12px;  --t-md: 13.5px; --t-lg: 15.5px;
+  --t-xl: 19px;   --t-2xl: 24px; --t-3xl: 30px;  --t-4xl: 38px;
+
+  /* Tightened: 4/8/12/16/20/26/34/42 -> 3/6/10/14/18/24/30/38 */
+  --s1: 3px; --s2: 6px; --s3: 10px; --s4: 14px; --s5: 18px;
+  --s6: 24px; --s7: 30px; --s8: 38px;
+
+  --r1: 3px; --r2: 5px; --r3: 8px;
+  --row: 26px;                 /* Direction C table density */
+  --shadow:   0 1px 2px rgba(18,24,32,.05), 0 3px 10px rgba(18,24,32,.04);
+  --shadow-2: 0 2px 5px rgba(18,24,32,.07), 0 10px 24px rgba(18,24,32,.07);
+  --rail: 206px;               /* was 244: the rail was eating page width */
+  --topbar: 46px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--paper); color: var(--ink); }
+body { font: var(--t-md)/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+
+/* ------------------------------------------------------- focus and motion --
+   Before this pass the stylesheet contained exactly ONE focus rule and it
+   covered select/input/textarea. Tabbing reached all thirteen nav links, every
+   button, every sortable column header and every drill-down link in a table
+   and showed nothing at all. One :focus-visible rule on the whole document is
+   the fix, because :focus-visible already distinguishes keyboard focus from a
+   mouse click -- so the ring appears for keyboard users and does not flash on
+   every click.
+
+   :focus-visible is used rather than :focus so that clicking a table row to
+   drill down does not leave a ring behind on the row you just left. */
+:where(a, button, select, input, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r1);
+}
+/* A focused row or cell must not be clipped by the scroll container that holds
+   it, or the ring is drawn under the sticky header. */
+.scroll-y :focus-visible, .scroll-x :focus-visible { outline-offset: -2px; }
+
+/* Keyboard users land on thirteen nav links before reaching any content, on
+   every page. The skip link is off-screen until focused, then sits over the
+   masthead. */
+.skip-link { position: absolute; left: var(--s3); top: -3em; z-index: 100;
+             background: var(--accent); color: #fff; padding: var(--s2) var(--s4);
+             border-radius: var(--r1); font: 600 var(--t-sm)/1 var(--sans);
+             text-decoration: none; }
+.skip-link:focus { top: var(--s3); }
+.main:focus { outline: none; }
+
+/* prefers-reduced-motion was absent entirely while the stylesheet ran
+   transitions. This honours it globally rather than per-component, so a rule
+   added later cannot forget to. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.011em; }
+code, pre { font-family: var(--mono); }
+
+/* ===========================================================================
+   PHASE 8e LAYOUT PRIMITIVES
+   ---------------------------------------------------------------------------
+   The previous pass retuned colour and type and left every page as the same
+   centred column of stacked panels. These are the pieces that let a page type
+   have a SHAPE: a filter bar that stays put, a controls-beside-workspace
+   split, a team field, a tab strip, a scoreboard, a card grid.
+
+   Nothing here is decorative. Each primitive exists because a specific page
+   was the wrong shape without it.
+   ========================================================================= */
+
+/* ----------------------------------------------------------------- shell --
+   Rail + topbar + full-width main. `.main` lost its 1180px max-width: a
+   seventeen-column leaderboard on a 1340px screen was being rendered into a
+   1180px column with 160px of empty gutter beside it. Pages that WANT a
+   measure set it themselves (.prose does, at 68ch), rather than every page
+   inheriting one because reports need it. */
+.shell { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr);
+         min-height: 100vh; }
+.rail { background: var(--card); border-right: 1px solid var(--rule);
+        position: sticky; top: 0; height: 100vh;
+        display: flex; flex-direction: column; overflow: hidden; }
+.brand { padding: var(--s3) var(--s4); border-bottom: 1px solid var(--rule); }
+.brand .mark { font: 700 var(--t-md)/1.1 var(--sans); letter-spacing: -.02em; }
+.brand .sub { font: 400 var(--t-xs)/1.2 var(--mono); color: var(--muted);
+              margin-top: 2px; }
+.nav { display: flex; flex-direction: column; padding: var(--s2) 0;
+       overflow-y: auto; gap: 1px; }
+.nav-group { font: 700 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+             letter-spacing: .13em; text-transform: uppercase;
+             color: var(--faint); padding: var(--s4) var(--s4) var(--s2); }
+.nav a { display: flex; align-items: center; gap: var(--s2);
+         padding: 5px var(--s4); color: var(--ink-2); text-decoration: none;
+         font: 500 var(--t-sm)/1.2 var(--sans);
+         border-left: 2px solid transparent; }
+.nav .glyph { flex: 0 0 15px; width: 15px; height: 15px; display: inline-flex;
+              align-items: center; justify-content: center; color: var(--faint); }
+.nav .glyph svg { display: block; }
+.nav a:hover { background: var(--sunken); color: var(--ink); }
+.nav a[aria-current="page"] { background: var(--accent-w); color: var(--accent);
+                              border-left-color: var(--accent); font-weight: 700; }
+.nav a[aria-current="page"] .glyph { color: var(--accent); }
+.rail-foot { margin-top: auto; padding: var(--s2) var(--s4);
+             border-top: 1px solid var(--rule);
+             font: 400 var(--t-xs)/1.3 var(--mono); color: var(--muted); }
+
+/* The topbar carries what used to be duplicated into every page: where you
+   are, the global search, and the season. It is sticky so a filter is never
+   scrolled away from the table it filters. */
+.topbar { position: sticky; top: 0; z-index: 30; height: var(--topbar);
+          display: flex; align-items: center; gap: var(--s3);
+          padding: 0 var(--s5); background: var(--card);
+          border-bottom: 1px solid var(--rule); }
+.crumb { display: flex; align-items: center; gap: var(--s2); min-width: 0;
+         font: 500 var(--t-sm)/1 var(--sans); color: var(--muted); }
+.crumb a { color: var(--muted); text-decoration: none; }
+.crumb a:hover { color: var(--accent); text-decoration: underline; }
+/* --n5 is a border value (2.03:1) and must not carry text; the separator
+   uses the faint text token, which clears the floor. */
+.crumb .sep { color: var(--faint); }
+.crumb .here { color: var(--ink); font-weight: 700; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+.topbar .spacer { flex: 1 1 auto; }
+.topbar .find { position: relative; flex: 0 1 300px; min-width: 0; }
+.topbar .find input { width: 100%; }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.page { padding: var(--s5); flex: 1 1 auto; min-width: 0; }
+
+/* ----------------------------------------------------------- page header --
+   Compact by default: an eyebrow, a title and a right-aligned meta strip on
+   ONE line where the title is short. The old header was a 42px serif title,
+   a 17px lede and a stat row -- about 180px of chrome before any data. */
+.page-head { display: flex; align-items: flex-end; gap: var(--s4);
+             flex-wrap: wrap; border-bottom: 2px solid var(--ink);
+             padding-bottom: var(--s2); margin-bottom: var(--s4); }
+.page-head .lhs { min-width: 0; flex: 1 1 auto; }
+.eyebrow { font: 700 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+           letter-spacing: .14em; text-transform: uppercase;
+           color: var(--accent); margin-bottom: 4px; }
+.page-head h1, .page-head h2 { margin: 0; font: 700 var(--t-2xl)/1.1 var(--sans);
+                               letter-spacing: -.025em; text-wrap: balance; }
+.page-head .lede { margin: var(--s2) 0 0; font-size: var(--t-md);
+                   color: var(--muted); max-width: 76ch; }
+.page-head .meta { display: flex; gap: var(--s4); align-items: baseline;
+                   font: 400 var(--t-xs)/1 var(--mono); color: var(--muted); }
+.page-head .meta b { font: 600 var(--t-lg)/1 var(--mono); color: var(--ink);
+                     display: block; margin-bottom: 2px; }
+
+/* ---------------------------------------------------------------- toolbar --
+   A filter bar that belongs to a table: sticky under the topbar, one row,
+   dense. Replaces `.controls`, which wrapped into three ragged rows above the
+   leaderboard and scrolled away as soon as you looked at the data. */
+.toolbar { position: sticky; top: var(--topbar); z-index: 20;
+           display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+           padding: var(--s2) var(--s3); margin-bottom: var(--s4);
+           background: var(--card); border: 1px solid var(--rule);
+           border-radius: var(--r2); }
+.toolbar .grp { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.toolbar label { font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+                 letter-spacing: .1em; text-transform: uppercase;
+                 color: var(--faint); white-space: nowrap; }
+.toolbar .spacer { flex: 1 1 auto; }
+.toolbar .count { font: 500 var(--t-xs)/1 var(--mono); color: var(--muted);
+                  white-space: nowrap; }
+
+/* ------------------------------------------------------------------ split --
+   Controls beside a workspace. The model builder and the catalog were both
+   "a column of settings, then a column of results, stacked vertically", which
+   meant choosing a variable scrolled the chart off screen. */
+.split { display: grid; grid-template-columns: 290px minmax(0, 1fr);
+         gap: var(--s5); align-items: start; }
+.split > .side { position: sticky; top: calc(var(--topbar) + var(--s4));
+                 display: flex; flex-direction: column; gap: var(--s4);
+                 max-height: calc(100vh - var(--topbar) - var(--s6));
+                 overflow-y: auto; }
+.split > .work { min-width: 0; display: flex; flex-direction: column;
+                 gap: var(--s5); }
+.split.wide { grid-template-columns: minmax(0, 1fr) 320px; }
+.split.wide > .side { order: 2; }
+
+.cols-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: var(--s5); align-items: start; }
+.cols-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: var(--s4); align-items: start; }
+
+/* -------------------------------------------------------------- team field --
+   Direction B. The franchise colour as a FIELD, with a darker diagonal so the
+   record has somewhere to sit, white text at 4.5:1 via --team-safe, and the
+   crest at a size that reads as identity rather than as a favicon. */
+.hero-team { position: relative; overflow: hidden; border-radius: var(--r2);
+             background: var(--team-safe); color: #fff;
+             display: flex; align-items: center; gap: var(--s4);
+             padding: var(--s4) var(--s5); }
+.hero-team::after { content: ""; position: absolute; inset: 0 0 0 auto;
+                    width: 34%; background: rgba(0,0,0,.18);
+                    clip-path: polygon(30% 0, 100% 0, 100% 100%, 0 100%); }
+.hero-team > * { position: relative; z-index: 1; }
+.hero-team .crest { width: 52px; height: 52px; flex: 0 0 52px;
+                    object-fit: contain;
+                    filter: drop-shadow(0 1px 4px rgba(0,0,0,.35)); }
+.hero-team .who { flex: 1 1 auto; min-width: 0; }
+.hero-team h1 { margin: 0; font: 800 var(--t-2xl)/1 var(--sans);
+                letter-spacing: -.03em; }
+.hero-team .where { margin-top: 4px; font: 700 var(--t-xs)/1 var(--sans);
+                    font-stretch: 85%; letter-spacing: .14em;
+                    text-transform: uppercase; color: var(--team-accent-ink, rgba(255,255,255,.85)); }
+.hero-team .rec { text-align: right; flex: 0 0 auto; }
+.hero-team .rec .big { font: 600 var(--t-3xl)/.95 var(--mono);
+                       letter-spacing: -.04em; }
+.hero-team .rec .sub { margin-top: 3px; font: 600 var(--t-xs)/1 var(--sans);
+                       font-stretch: 85%; letter-spacing: .12em;
+                       text-transform: uppercase; color: rgba(255,255,255,.88); }
+
+/* A player header is the same idea at lower volume: the team colour is a band
+   down the left rather than the whole field, because a player is not the
+   franchise. */
+.hero-player { display: flex; align-items: center; gap: var(--s4);
+               background: var(--card); border: 1px solid var(--rule);
+               border-left: 4px solid var(--team); border-radius: var(--r2);
+               padding: var(--s4) var(--s5); }
+.hero-player .who { flex: 1 1 auto; min-width: 0; }
+.hero-player h1 { margin: 0; font: 700 var(--t-2xl)/1.05 var(--sans);
+                  letter-spacing: -.025em; }
+.hero-player .where { margin-top: 4px; font: 600 var(--t-xs)/1 var(--sans);
+                      font-stretch: 85%; letter-spacing: .12em;
+                      text-transform: uppercase; color: var(--muted); }
+.hero-player .where b { color: var(--team-safe); }
+
+/* ------------------------------------------------------------- stat strip --
+   Replaces `.facts` / `.hero .stats`, which were bordered boxes 90px tall for
+   one number each. A strip of label-over-figure separated by hairlines says
+   the same thing in a third of the height. */
+.statrow { display: flex; flex-wrap: wrap; background: var(--card);
+           border: 1px solid var(--rule); border-radius: var(--r2);
+           overflow: hidden; }
+.statrow .st { flex: 1 1 110px; min-width: 0; padding: var(--s2) var(--s3);
+               border-right: 1px solid var(--rule-2); }
+.statrow .st:last-child { border-right: 0; }
+.statrow .k { font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+              letter-spacing: .11em; text-transform: uppercase;
+              color: var(--faint); }
+.statrow .v { margin-top: 3px; font: 500 var(--t-md)/1.1 var(--mono);
+              color: var(--ink); }
+.statrow .v.pos { color: var(--win); } .statrow .v.neg { color: var(--loss); }
+
+/* ------------------------------------------------------------------- tabs -- */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule);
+        margin: var(--s4) 0 var(--s4); overflow-x: auto; }
+.tabs button { appearance: none; background: none; border: 0;
+               border-bottom: 2px solid transparent; cursor: pointer;
+               padding: var(--s2) var(--s3);
+               font: 600 var(--t-sm)/1 var(--sans); color: var(--muted);
+               white-space: nowrap; }
+.tabs button:hover { color: var(--ink); background: var(--sunken); }
+.tabs button[aria-selected="true"] { color: var(--accent);
+                                     border-bottom-color: var(--accent);
+                                     font-weight: 700; }
+
+/* ------------------------------------------------------------------ chips --
+   Direction B. A chip states a fact in one glance and is coloured only when
+   the fact is good or bad. */
+.chip { display: inline-flex; align-items: center; gap: 4px;
+        padding: 2px 7px; border-radius: var(--r1);
+        font: 700 var(--t-xs)/1.5 var(--sans); font-stretch: 85%;
+        letter-spacing: .07em; text-transform: uppercase;
+        background: var(--sunken); color: var(--ink-2); white-space: nowrap; }
+.chip.ok   { background: var(--win);  color: #fff; }
+.chip.bad  { background: var(--loss); color: #fff; }
+.chip.warn { background: var(--warn); color: #fff; }
+.chip.info { background: var(--accent); color: #fff; }
+.chip.ghost { background: none; border: 1px solid var(--rule); color: var(--muted); }
+.chip.team { background: var(--team-safe); color: #fff; }
+
+/* -------------------------------------------------------------- scoreboard --
+   A game opens as a result, not as a table of numbers: two teams, two scores,
+   the winner marked, then the line score, then the box score behind tabs. */
+.scoreboard { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+              align-items: center; gap: var(--s4);
+              background: var(--card); border: 1px solid var(--rule);
+              border-radius: var(--r2); padding: var(--s4) var(--s5); }
+.scoreboard .side { display: flex; align-items: center; gap: var(--s3);
+                    min-width: 0; }
+.scoreboard .side.away { flex-direction: row-reverse; text-align: right; }
+.scoreboard .side img { width: 42px; height: 42px; object-fit: contain; flex: 0 0 42px; }
+.scoreboard .side .nm { font: 700 var(--t-lg)/1.1 var(--sans);
+                        letter-spacing: -.02em; min-width: 0; }
+.scoreboard .side .rec { font: 400 var(--t-xs)/1 var(--mono); color: var(--muted);
+                         margin-top: 3px; }
+.scoreboard .pts { font: 600 var(--t-3xl)/1 var(--mono); letter-spacing: -.04em; }
+.scoreboard .pts.win { color: var(--win); }
+.scoreboard .pts.lose { color: var(--muted); }
+.scoreboard .mid { text-align: center; font: 600 var(--t-xs)/1.4 var(--sans);
+                   font-stretch: 85%; letter-spacing: .12em;
+                   text-transform: uppercase; color: var(--faint); }
+
+/* ------------------------------------------------------------- card grid --
+   For the knowledge base and the findings list, where each item is a thing
+   you decide whether to open -- a question, a verdict, a date -- rather than
+   a row you compare against its neighbours. */
+.cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+            gap: var(--s3); }
+.kcard { display: flex; flex-direction: column; gap: var(--s2);
+         background: var(--card); border: 1px solid var(--rule);
+         border-left: 3px solid var(--accent); border-radius: var(--r2);
+         padding: var(--s3) var(--s4); text-align: left; cursor: pointer;
+         font: inherit; color: inherit; }
+.kcard:hover { background: var(--sunken); border-left-color: var(--accent-2); }
+.kcard.ok   { border-left-color: var(--win); }
+.kcard.bad  { border-left-color: var(--loss); }
+.kcard.warn { border-left-color: var(--warn); }
+.kcard .q { font: 600 var(--t-md)/1.35 var(--sans); color: var(--ink); }
+.kcard .a { font: 400 var(--t-sm)/1.45 var(--sans); color: var(--muted);
+            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+            overflow: hidden; }
+.kcard .foot { display: flex; align-items: center; gap: var(--s2);
+               flex-wrap: wrap; margin-top: auto;
+               font: 400 var(--t-xs)/1 var(--mono); color: var(--faint); }
+
+/* ------------------------------------------------------------ entry tiles --
+   The home page's destinations. Not four equal cards in a row: a lead tile
+   twice the width, then the rest, so the page states a priority. */
+.entry { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+         gap: var(--s3); }
+.entry a { display: flex; flex-direction: column; gap: var(--s2);
+           padding: var(--s4); text-decoration: none; color: inherit;
+           background: var(--card); border: 1px solid var(--rule);
+           border-radius: var(--r2); }
+.entry a:hover { border-color: var(--accent); background: var(--accent-w); }
+.entry a.lead { grid-column: span 2; background: var(--accent); color: #fff;
+                border-color: var(--accent); }
+.entry a.lead:hover { background: var(--accent-2); }
+.entry .g { color: var(--accent); line-height: 0; }
+.entry a.lead .g { color: #fff; }
+.entry h3 { margin: 0; font: 700 var(--t-md)/1.2 var(--sans);
+            letter-spacing: -.01em; }
+.entry p { margin: 0; font-size: var(--t-sm); color: var(--muted); }
+.entry a.lead p { color: rgba(255,255,255,.9); }
+
+/* --------------------------------------------------------------- division --
+   Teams grouped East/West by division, as columns rather than six stacked
+   tables. */
+.conf { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--s5); align-items: start; }
+.conf-head { display: flex; align-items: baseline; gap: var(--s2);
+             border-bottom: 2px solid var(--ink); padding-bottom: 4px;
+             margin-bottom: var(--s3); }
+.conf-head h3 { margin: 0; font: 700 var(--t-lg)/1 var(--sans);
+                letter-spacing: -.02em; }
+.conf-head .count { font: 400 var(--t-xs)/1 var(--mono); color: var(--muted); }
+.div-block { margin-bottom: var(--s4); }
+.div-block > .dh { font: 700 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+                   letter-spacing: .13em; text-transform: uppercase;
+                   color: var(--faint); margin-bottom: var(--s2); }
+
+/* --------------------------------------------------------------- home hero --
+   A header with imagery rather than a flat colour band. The crests ARE the
+   subject of this application, so they are the picture: a tiled wall behind a
+   dark scrim, at an opacity where they read as texture until you look at them.
+   Height is capped so the page opens on content rather than on a banner. */
+.home-hero { position: relative; overflow: hidden; border-radius: var(--r3);
+             background: var(--accent); color: #fff; padding: var(--s6) var(--s6) var(--s5);
+             min-height: 190px; display: flex; flex-direction: column;
+             justify-content: flex-end; gap: var(--s4); }
+.home-hero .crestwall { position: absolute; inset: -4% -2%; display: flex;
+                        flex-wrap: wrap; gap: 10px; opacity: .13;
+                        pointer-events: none; transform: rotate(-7deg); }
+.home-hero .crestwall img { width: 54px; height: 54px; object-fit: contain;
+                            filter: grayscale(1) brightness(3); }
+.home-hero::after { content: ""; position: absolute; inset: 0;
+                    background: linear-gradient(105deg,
+                      var(--accent) 34%, rgba(17,65,127,.72) 100%); }
+.home-hero > * { position: relative; z-index: 1; }
+.home-hero .eyebrow { color: rgba(255,255,255,.82); }
+.home-hero h1 { margin: 0; font: 800 var(--t-3xl)/1.06 var(--sans);
+                letter-spacing: -.03em; max-width: 24ch; text-wrap: balance; }
+.home-hero p { margin: var(--s2) 0 0; font-size: var(--t-md);
+               color: rgba(255,255,255,.88); max-width: 62ch; }
+.home-hero .hh-stats { display: flex; flex-wrap: wrap; gap: var(--s6);
+                       border-top: 1px solid rgba(255,255,255,.26);
+                       padding-top: var(--s3); }
+.home-hero .hh-stats b { display: block; font: 600 var(--t-xl)/1 var(--mono);
+                         letter-spacing: -.03em; }
+.home-hero .hh-stats span { font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+                            letter-spacing: .13em; text-transform: uppercase;
+                            color: rgba(255,255,255,.76); display: block;
+                            margin-top: 4px; }
+
+/* Shown only when printing. The inverse of .no-print, for the few things a
+   PDF needs that the screen puts somewhere a PDF cannot reach. */
+.print-only { display: none; }
+
+/* `.meta-row` survives on several pages that still use it. It lost its
+   spacing when the page header became a flex row, so the spans ran together
+   ("2,836 player-seasons815 players"). */
+.meta-row { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: baseline;
+            margin-top: var(--s2);
+            font: 400 var(--t-xs)/1.5 var(--mono); color: var(--muted); }
+.meta-row > span { display: inline-flex; align-items: baseline; gap: 4px; }
+.meta-row b { color: var(--ink); font-weight: 600; }
+
+/* The model builder's control stack: every field on its own row at the rail's
+   width, labels above inputs rather than beside them. */
+.modelctl { display: flex; flex-direction: column; gap: var(--s3); }
+.modelctl .field { display: flex; flex-direction: column; align-items: stretch;
+                   gap: 4px; font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+                   letter-spacing: .1em; text-transform: uppercase;
+                   color: var(--faint); }
+.modelctl .field select, .modelctl .field input { width: 100%; }
+.modelctl .field > input[type="number"] { flex: 1 1 auto; }
+
+/* Notes expand inside their card rather than rendering inline for all 60
+   analyses at once, which is what made this page 8196px tall. */
+.kcard.open { grid-column: 1 / -1; }
+.kc-notes { display: flex; flex-direction: column; gap: var(--s2);
+            margin-top: var(--s2); padding-top: var(--s2);
+            border-top: 1px solid var(--rule-2); }
+.kc-note { border-left: 3px solid var(--rule); padding-left: var(--s3);
+           font-size: var(--t-sm); }
+/* A question can be a paragraph -- one saved analysis opens with 600 words of
+   hypothesis -- so the title clamps too. Without this a single long question
+   set the row height for every card beside it. */
+.kcard .q { font: 600 var(--t-md)/1.35 var(--sans); color: var(--ink);
+            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+            overflow: hidden; }
+.kcard .q:hover { color: var(--accent); text-decoration: underline; }
+.kcard { min-height: 132px; }
+
+/* The report rail: provenance as a definition list, actions stacked. */
+.runmeta { display: flex; flex-direction: column; gap: 5px; }
+.runmeta > div { display: flex; justify-content: space-between; gap: var(--s3);
+                 font: 400 var(--t-xs)/1.4 var(--mono); }
+.runmeta span { color: var(--faint); }
+.runmeta b { color: var(--ink); font-weight: 500; text-align: right;
+             overflow: hidden; text-overflow: ellipsis; }
+.stackbtn { display: flex; flex-direction: column; gap: var(--s2); }
+.stackbtn > * { width: 100%; justify-content: center; }
+
+/* A section heading with an action on the right. */
+.sect-head { display: flex; align-items: baseline; justify-content: space-between;
+             gap: var(--s4); border-bottom: 1px solid var(--rule);
+             padding-bottom: var(--s2); margin-bottom: var(--s3); }
+.sect-head h2, .sect-head h3 { margin: 0; font: 700 var(--t-lg)/1.1 var(--sans);
+                               letter-spacing: -.02em; }
+.linkish { appearance: none; background: none; border: 0; cursor: pointer;
+           padding: 0; font: 600 var(--t-sm)/1 var(--sans); color: var(--accent); }
+.linkish:hover { text-decoration: underline; }
+.page-foot { display: flex; flex-wrap: wrap; gap: var(--s5); margin-top: var(--s7);
+             padding-top: var(--s3); border-top: 1px solid var(--rule);
+             font: 400 var(--t-xs)/1 var(--mono); color: var(--faint); }
+
+/* ------------------------------------------------------------------ prose - */
+.prose { font: var(--t-lg)/1.68 var(--serif); color: var(--ink); max-width: 42em; }
+.prose h1, .prose h2, .prose h3 { font-family: var(--sans); line-height: 1.3;
+                                  margin: 1.5em 0 .5em; }
+.prose h1 { font-size: 17px; } .prose h2 { font-size: 15.5px; } .prose h3 { font-size: 14px; }
+.prose p { margin: 0 0 .95em; }
+.prose ul, .prose ol { margin: 0 0 .95em; padding-left: 1.25em; }
+.prose li { margin-bottom: .4em; }
+.prose strong { font-weight: 650; }
+.prose code { font-size: var(--t-sm); background: var(--sunken); padding: 1px 5px;
+              border-radius: 4px; }
+.prose blockquote { margin: 1em 0; padding-left: var(--s3);
+                    border-left: 3px solid var(--rule); color: var(--ink-2); }
+.prose table { border-collapse: collapse; margin: 1.1em 0; font: var(--t-sm)/1.5 var(--sans);
+               font-variant-numeric: tabular-nums; max-width: 100%; }
+.prose th, .prose td { border-bottom: 1px solid var(--rule); padding: 7px 15px 7px 0;
+                       text-align: left; vertical-align: top; }
+.prose thead th { border-bottom: 1.5px solid var(--ink-2); font-weight: 600;
+                  font-size: var(--t-xs); letter-spacing: .04em; text-transform: uppercase;
+                  color: var(--ink-2); }
+.prose td:not(:first-child), .prose th:not(:first-child) { text-align: right; }
+
+/* ------------------------------------------------------------- components - */
+.panel { background: var(--card); border: 1px solid var(--rule); border-radius: var(--r2);
+         padding: var(--s3) var(--s4); box-shadow: var(--shadow); }
+.panel > h4 { font: 600 var(--t-xs)/1 var(--sans); letter-spacing: .08em;
+              text-transform: uppercase; color: var(--muted); margin-bottom: var(--s3); }
+.panel + .panel { margin-top: var(--s3); }
+.panel.accent { border-left: 3px solid var(--n8); }
+.panel.warn   { border-left: 3px solid var(--warn); background: var(--warn-w); }
+.panel.bad    { border-left: 3px solid var(--bad);  background: var(--bad-w); }
+
+.grid { display: grid; gap: var(--s4); }
+.grid.two   { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.grid.three { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+
+.card-link { display: block; text-decoration: none; color: inherit; background: var(--card);
+             border: 1px solid var(--rule); border-radius: var(--r3);
+             padding: var(--s4) var(--s5); box-shadow: var(--shadow);
+             transition: box-shadow .12s ease, border-color .12s ease; }
+.card-link:hover { box-shadow: var(--shadow-2); border-color: var(--ink-2); }
+.card-link h4 { font: 600 var(--t-lg)/1.3 var(--serif); margin-bottom: var(--s1); }
+.card-link p  { margin: 0; color: var(--muted); font-size: var(--t-sm); }
+.card-link .glyph { font-size: 17px; opacity: .6; display: block; margin-bottom: var(--s2); }
+
+.stat-row { display: flex; flex-wrap: wrap; gap: var(--s5); }
+.stat { min-width: 82px; }
+.stat .v { font: 600 var(--t-2xl)/1.1 var(--serif); font-variant-numeric: tabular-nums;
+           letter-spacing: -.015em; }
+.stat .k { font-size: var(--t-xs); color: var(--muted); margin-top: 2px;
+           text-transform: uppercase; letter-spacing: .05em; }
+
+.tag { display: inline-flex; align-items: center; gap: 4px; font: 600 10px/1 var(--sans);
+       letter-spacing: .05em; text-transform: uppercase; padding: 3px 7px;
+       border-radius: 5px; border: 1px solid var(--rule); color: var(--muted);
+       background: var(--card); white-space: nowrap; }
+.tag.ok   { color: var(--good); border-color: var(--good-r); background: var(--good-w); }
+.tag.bad  { color: var(--bad);  border-color: var(--bad-r);  background: var(--bad-w); }
+.tag.warn { color: var(--warn); border-color: var(--warn-r); background: var(--warn-w); }
+.tag.accent { color: var(--accent); border-color: var(--accent-r); background: var(--accent-w); }
+button.tag { cursor: pointer; }
+
+/* ---------------------------------------------------------------- controls */
+/* A thin utility strip above the page header: search and escape hatches, set
+   apart so it does not compete with the title for first read. */
+.utility { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap;
+           padding-bottom: var(--s3); margin-bottom: var(--s4);
+           border-bottom: 1px solid var(--rule-2); }
+.utility input[type="search"] { flex: 1; max-width: 340px; }
+
+/* Ask input: the textarea is the subject of the page, the button is an action
+   on it — so they stack rather than compete, and the button is label-sized. */
+.askbar { display: flex; flex-direction: column; gap: var(--s2);
+          margin-bottom: var(--s6); }
+.askbar textarea { width: 100%; min-height: 108px; font: var(--t-lg)/1.55 var(--sans);
+                   padding: var(--s3) var(--s4); border-radius: var(--r3);
+                   box-shadow: var(--shadow); resize: vertical; }
+.askbar-foot { display: flex; align-items: center; justify-content: space-between;
+               gap: var(--s3); flex-wrap: wrap; font-size: var(--t-sm); }
+.askbar-foot .btn { padding: 9px 20px; }
+
+.controls { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center;
+            margin-bottom: var(--s4); }
+.field { display: inline-flex; align-items: center; gap: var(--s2);
+         color: var(--muted); font-size: var(--t-sm); }
+select, input[type="search"], input[type="number"], input[type="text"], textarea {
+  font: var(--t-sm) var(--sans); color: var(--ink); background: var(--card);
+  border: 1px solid var(--rule); border-radius: var(--r1); padding: 6px 9px;
+  /* A <select> sizes to its WIDEST OPTION by default, and some of these hold
+     full player or table names. On the draft board that produced a 430px
+     control inside a 420px viewport and pushed the whole document sideways --
+     the last horizontal overflow left after the grid and table fixes. A form
+     control must never get to decide how wide the page is. */
+  max-width: 100%; }
+/* flex and grid children default to min-width:auto, which refuses to shrink
+   below content width; this is what lets the clamp above actually bite.
+   `max-width: 100%` alone was not enough: it resolves against the label that
+   wraps the control, and the label was itself sized by that control. The
+   control has to be a shrinkable flex item for the chain to terminate. */
+.field, .controls > * { min-width: 0; }
+.field > select, .field > input, .field > textarea { flex: 1 1 auto; min-width: 0; }
+select:focus, input:focus, textarea:focus { outline: 2px solid var(--accent);
+  outline-offset: -1px; }
+input[type="search"] { min-width: 220px; }
+textarea { font: var(--t-md)/1.5 var(--sans); padding: 10px 12px; border-radius: var(--r2); }
+
+.btn { background: var(--ink); color: #fff; border: 0; border-radius: var(--r2);
+       padding: 10px 18px; font: 600 var(--t-md) var(--sans); cursor: pointer; }
+.btn:hover:not(:disabled) { background: #000; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn-ghost { background: var(--card); color: var(--ink-2); border: 1px solid var(--rule);
+             border-radius: var(--r1); padding: 6px 13px;
+             font: 500 var(--t-sm) var(--sans); cursor: pointer; }
+.btn-ghost:hover:not(:disabled) { border-color: var(--ink-2); color: var(--ink); }
+.btn-ghost:disabled { opacity: .45; cursor: default; }
+.btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-accent:hover:not(:disabled) { background: var(--accent-2); color: #fff; }
+
+/* ------------------------------------------------------------------ tables
+   Direction C density on Direction B colour.
+
+   Figures are mono with tabular figures: at this density a leaderboard puts
+   seventeen numeric columns side by side, and a proportional face gives each
+   column a different width per row so the eye cannot run down it. Names opt
+   back into the sans, because a name is read rather than scanned.
+
+   Rows are --row (26px) and separated by a 1px line rather than sitting in a
+   card. No panel chrome around a table unless the table scrolls. */
+table.data { border-collapse: collapse; width: 100%;
+             font: 400 var(--t-sm)/1.25 var(--mono);
+             font-variant-numeric: tabular-nums; }
+table.data th, table.data td { padding: 0 var(--s2); height: var(--row);
+                               border-bottom: 1px solid var(--rule-2);
+                               text-align: right; white-space: nowrap; }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data th.name, table.data td.name { text-align: left; }
+table.data thead th { font: 700 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+                      letter-spacing: .09em; text-transform: uppercase;
+                      color: var(--muted); background: var(--card);
+                      border-bottom: 1px solid var(--n5); height: 24px; }
+table.data a { color: inherit; text-decoration: none; }
+table.data a:hover { color: var(--accent); text-decoration: underline; }
+table.data th.sorted, table.data th.on { color: var(--accent); }
+table.data.sortable thead th { cursor: pointer; }
+table.data.sortable thead th:hover { color: var(--ink); background: var(--sunken); }
+table.data tbody tr:hover td { background: var(--sunken); }
+table.data td.name { font-family: var(--sans); font-size: var(--t-md);
+                     font-weight: 600; color: var(--ink); }
+table.data td.wrap, table.data td.clamp { font-family: var(--sans);
+                                          white-space: normal; text-align: left; }
+table.data td.clamp { max-width: 32em; min-width: 14em; line-height: 1.35; }
+table.data tr.dim td { color: var(--muted); }
+
+/* The ranked column: a leaderboard is sorted by exactly one stat and nothing
+   used to say which, so the reader re-read the header row on every glance. */
+table.data td.sorted-cell { background: var(--accent-w); color: var(--ink);
+                            font-weight: 600; }
+table.data tbody tr:hover td.sorted-cell { background: var(--accent-r); }
+
+/* The rank cell carries the player's franchise colour as a spine: thirty
+   identities on one neutral page, and the only place team colour appears
+   inside a league-wide table. --team is set per row by teamStyle(). */
+table.data td.rank { color: var(--faint); text-align: right; width: 34px;
+                     padding-left: var(--s1);
+                     border-left: 3px solid var(--team, transparent); }
+
+/* Above/below a stated benchmark. Never decorative. */
+table.data td.pos { color: var(--win); font-weight: 600; }
+table.data td.neg { color: var(--loss); font-weight: 600; }
+
+/* A scrolling table keeps its header. The container owns the scroll, which is
+   why .panel.scroll-y must carry no vertical padding -- otherwise the sticky
+   header parks below the panel's padding edge and rows slide under it. */
+.scroll-y { max-height: 460px; overflow-y: auto; }
+.scroll-x { overflow-x: auto; }
+.panel.scroll-y { padding-top: 0; padding-bottom: 0; }
+.panel.scroll-y > table.data:first-child { margin-top: 0; }
+
+/* ------------------------------------------------- ONE sticky-header rule --
+   A sticky offset is measured from the nearest SCROLLPORT, not from the
+   viewport. Get that wrong and the header is drawn *inside* its own box by the
+   offset amount and paints over the first rows -- which is exactly what
+   happened: call sites write `class="table-full scroll-x"`, `overflow-x: auto`
+   forces `overflow-y` to compute to `auto` as well, so `.table-full` became a
+   scrollport and the header's `top: var(--topbar)` put it 46px down the box,
+   covering row 1 on eleven tables across five routes.
+
+   So the offset is a custom property rather than a literal, and the element
+   that OWNS the scrollport sets it to 0. The `.scroll-*` declaration comes
+   after the `.table-full` one deliberately: when a call site puts both classes
+   on the same element the specificity is equal, so source order decides, and
+   the scrollport must win. Held by
+   tests/checks_design.py::table_headers_sit_above_their_first_row. */
+table.data thead th { position: sticky; top: var(--sticky-top, var(--topbar));
+                      z-index: 5; background: var(--card); }
+/* DEFAULT is the topbar, not 0: when the page is what scrolls, a header pinned
+   at 0 slides underneath the sticky topbar. Only a box that owns the scroll
+   zeroes it, below. (`.table-full` is the common case and states it anyway,
+   for anyone reading just this block.) */
+.table-full { --sticky-top: var(--topbar); }
+/* This box is the scrollport: its own top edge. MUST stay after .table-full. */
+.scroll-x, .scroll-y { --sticky-top: 0px; }
+
+/* A pinned header has no border-collapse border to draw once it detaches, so
+   the rule under it is a shadow, which paints in every state. */
+table.data thead th { box-shadow: inset 0 -1px 0 var(--n5); }
+
+/* A table that fills the page rather than sitting in a card: the leaderboard,
+   the roster, the game log.
+
+   Its header sticks to the TOPBAR rather than to a scroll container, because
+   here the page is what scrolls. A 21-row roster and a 9-season table stopped
+   being .scroll-y boxes in 8e, and without this their headers scrolled away
+   exactly as the in-box ones used to before the padding fix. `overflow:
+   hidden` would trap the sticky header, so the radius is applied by clipping
+   the corners of the first and last rows instead. */
+.table-full { background: var(--card); border: 1px solid var(--rule);
+              border-radius: var(--r2); }
+.table-full > .scroll-x { max-width: 100%; }
+.table-full table.data thead th:first-child { border-top-left-radius: var(--r2); }
+.table-full table.data thead th:last-child { border-top-right-radius: var(--r2); }
+
+/* ------------------------------------------------------------------ figure */
+.figure { background: var(--card); border: 1px solid var(--rule); border-radius: var(--r3);
+          padding: var(--s4) var(--s5) var(--s3); margin-bottom: var(--s4);
+          box-shadow: var(--shadow); }
+.figure figcaption { font: 600 var(--t-sm)/1.45 var(--sans); margin-bottom: var(--s3);
+                     max-width: 52em; }
+.figure .srcline { margin-top: var(--s2); padding-top: var(--s2);
+                   border-top: 1px solid var(--rule-2); color: var(--muted);
+                   font-size: var(--t-xs); display: flex; gap: var(--s3); flex-wrap: wrap;
+                   font-variant-numeric: tabular-nums; }
+
+/* -------------------------------------------------------------------- misc */
+details.step { border: 1px solid var(--rule); border-radius: var(--r2);
+               background: var(--card); margin-bottom: var(--s2); overflow: hidden; }
+details.step > summary { padding: 8px var(--s3); cursor: pointer; display: flex;
+                         gap: var(--s2); align-items: center; font-size: var(--t-sm);
+                         list-style: none; }
+details.step > summary::-webkit-details-marker { display: none; }
+details.step[open] > summary { border-bottom: 1px solid var(--rule-2); background: var(--sunken); }
+.step .seq { font: 600 var(--t-xs) var(--mono); color: var(--muted); min-width: 22px; }
+.step .name { font: 600 var(--t-sm) var(--mono); }
+.step .grow { flex: 1; }
+.step pre { margin: 0; padding: var(--s3) var(--s4); font: 12px/1.6 var(--mono);
+            overflow-x: auto; background: #fcfcfa; color: var(--ink-2); }
+
+.coverage-bar { display: flex; height: 7px; border-radius: 4px; overflow: hidden;
+                border: 1px solid var(--rule); }
+.coverage-bar i { display: block; height: 100%; }
+.legend { display: flex; gap: var(--s3); flex-wrap: wrap; color: var(--muted);
+          font-size: var(--t-xs); margin-top: var(--s2); align-items: center; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block;
+            vertical-align: -1px; margin-right: 4px; }
+
+/* Compact recent list: question on one line, its conclusion on the next, both
+   truncated. Never paragraph content. */
+.recent { list-style: none; margin: 0; padding: 0; }
+.recent li + li { border-top: 1px solid var(--rule-2); }
+.recent button { display: block; width: 100%; text-align: left; background: none;
+                 border: 0; padding: 9px 0; cursor: pointer; color: inherit; }
+.recent button:hover .q { color: var(--accent); }
+.recent .q { display: block; font-weight: 550; font-size: var(--t-sm);
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent .takeaway { display: block; color: var(--muted); font-size: var(--t-sm);
+                    margin-top: 2px; white-space: nowrap; overflow: hidden;
+                    text-overflow: ellipsis; }
+
+.page-foot { margin-top: var(--s7); padding-top: var(--s3);
+             border-top: 1px solid var(--rule-2); display: flex; gap: var(--s5);
+             flex-wrap: wrap; color: var(--faint); font-size: var(--t-xs);
+             font-variant-numeric: tabular-nums; }
+.page-foot code { font-size: var(--t-xs); }
+
+.cluster-card { text-align: left; font: inherit; }
+.cluster-card.picked { border-color: var(--n8); box-shadow: var(--shadow-2); }
+.cluster-card h4 { font-size: var(--t-md); }
+
+/* The equation, read as a sentence rather than decoded as notation. */
+.equation { font: 500 var(--t-md)/1.7 var(--mono); background: var(--sunken);
+            border: 1px solid var(--rule); border-radius: var(--r2);
+            padding: var(--s3) var(--s4); overflow-x: auto; }
+.equation b { color: var(--accent); font-weight: 600; }
+.plain { font-family: var(--serif); font-size: var(--t-lg); line-height: 1.6;
+         margin-top: var(--s3); max-width: 44em; }
+.plain li { margin-bottom: .35em; }
+
+/* Side panel: docked beside the content rather than replacing it, so picking a
+   table does not lose the catalogue you were reading. */
+.with-panel { padding-right: 420px; }
+.side-panel { position: fixed; top: 0; right: 0; width: 400px; height: 100vh;
+              background: var(--card); border-left: 1px solid var(--rule);
+              box-shadow: -8px 0 24px rgba(21,32,43,.06); display: flex;
+              flex-direction: column; z-index: 20; }
+.side-panel-head { padding: var(--s4); border-bottom: 1px solid var(--rule);
+                   display: flex; align-items: flex-start; justify-content: space-between;
+                   gap: var(--s3); }
+.side-panel-body { padding: var(--s4); overflow-y: auto; flex: 1; }
+.side-panel-body h4 { font: 600 var(--t-xs)/1 var(--sans); letter-spacing: .08em;
+                      text-transform: uppercase; color: var(--muted);
+                      margin-bottom: var(--s2); }
+.side-panel-body table.data th, .side-panel-body table.data td { padding: 5px 7px; }
+table.data tr.sel { background: var(--accent-w); }
+@media (max-width: 1100px) {
+  .with-panel { padding-right: 0; }
+  .side-panel { width: 100%; }
+}
+
+table.data td.stacked { line-height: 1.25; padding-top: 5px; padding-bottom: 5px; }
+table.data td.stacked .val { display: block; }
+table.data td.stacked .z { display: block; color: var(--faint); font-size: 10.5px;
+                           font-variant-numeric: tabular-nums; }
+
+.muted { color: var(--muted); } .faint { color: var(--faint); }
+.err { color: var(--bad); }
+.spin { display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+        border: 2px solid var(--rule); border-top-color: var(--accent);
+        animation: sp .75s linear infinite; vertical-align: -1px; }
+@keyframes sp { to { transform: rotate(360deg); } }
+.empty { color: var(--muted); padding: var(--s7) 0; text-align: center; }
+
+/* saved-analysis list rows in the rail */
+.item { display: block; width: 100%; text-align: left; background: none; border: 0;
+        border-top: 1px solid var(--rule-2); padding: 9px var(--s4) 10px;
+        border-left: 3px solid transparent; color: inherit; cursor: pointer; }
+.item:hover { background: var(--sunken); }
+.item[aria-current="true"] { background: var(--accent-w); border-left-color: var(--accent); }
+.item .q { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+           overflow: hidden; font-size: var(--t-sm); line-height: 1.35; }
+.item .meta { display: flex; gap: 6px; align-items: center; margin-top: 5px;
+              flex-wrap: wrap; color: var(--muted); font-size: 10.5px;
+              font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------- responsive - */
+@media (max-width: 960px) {
+  /* `minmax(0, 1fr)`, NOT `1fr`. A bare `1fr` is really `minmax(auto, 1fr)`,
+     and `auto` floors the track at its max-content width -- so a wide table
+     inside pushed this single column out to .main's own max-width of 1180px
+     and the whole document scrolled sideways. Measured before the fix: a
+     420px viewport gave documentElement.scrollWidth 1180, i.e. 760px of
+     overflow on every route. Held by tests/checks_design.py::no_horizontal_
+     overflow_at_420. */
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .rail { position: static; height: auto; border-right: 0;
+          border-bottom: 1px solid var(--rule); }
+  .nav { flex-direction: row; flex-wrap: wrap; }
+  .nav a { border-left: 0; border-bottom: 3px solid transparent; }
+  .nav a[aria-current="page"] { border-left: 0; border-bottom-color: var(--accent); }
+  .nav-group { width: 100%; }
+  .main { padding: var(--s5) var(--s4) var(--s7); min-width: 0; }
+  .page-head h1, .page-head h2 { font-size: var(--t-xl); }
+  .grid.two, .grid.three { grid-template-columns: minmax(0, 1fr); }
+
+  /* Below the breakpoint a wide table scrolls ITSELF rather than relying on an
+     ancestor having been given .scroll-x. Several panels had not been (the
+     model builder and the draft board both still overflowed the document after
+     the grid fix), and a rule that each new call site has to remember is a rule
+     that will be forgotten. `display:block` makes the table its own scroll
+     container; it costs the table layout algorithm, which at 420px is not
+     doing anything useful anyway.
+
+     Scoped to the narrow breakpoint so the desktop sticky-header behaviour,
+     which depends on .panel.scroll-y being the scroll container, is untouched. */
+  /* The 8e layout primitives all collapse to one column here. Without this
+     the model builder kept its 290px control rail at a 420px viewport, leaving
+     the workspace ~112px wide and pushing the predictor grid 150px past the
+     edge -- which is what the overflow check caught. */
+  .split, .split.wide { grid-template-columns: minmax(0, 1fr); }
+  .split > .side { position: static; max-height: none; overflow: visible; }
+  .split.wide > .side { order: 0; }
+  .cols-2, .cols-3, .conf { grid-template-columns: minmax(0, 1fr); }
+  .entry { grid-template-columns: minmax(0, 1fr); }
+  .entry a.lead { grid-column: auto; }
+  .scoreboard { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
+  .scoreboard .side, .scoreboard .side.away { flex-direction: row;
+                                              text-align: left; }
+  .statrow .st { flex: 1 1 50%; }
+  .hero-team { flex-wrap: wrap; }
+  .hero-team::after { display: none; }
+  .hero-team .rec { text-align: left; }
+  .topbar { height: auto; flex-wrap: wrap; padding: var(--s2) var(--s3); }
+  .topbar .find { flex: 1 1 100%; }
+  .toolbar { position: static; }
+  .cardgrid { grid-template-columns: minmax(0, 1fr); }
+  table.data { display: block; overflow-x: auto; max-width: 100%; }
+  .controls { flex-direction: column; align-items: stretch; }
+  .controls > *, .field { width: 100%; }
+  input[type="search"] { min-width: 0; }
+  .panel, .figure, .prose { max-width: 100%; }
+  .prose pre, pre { overflow-x: auto; max-width: 100%; }
+}
+@media (max-width: 620px) {
+  .btn { width: 100%; }
+  .panel { padding: var(--s3) var(--s4); }
+  .prose { font-size: 15px; }
+}
+
+/* ------------------------------------------------------------------ print - */
+@media print {
+  /* The exported PDF is a deliverable, not a screenshot of one. It reads from
+     the SAME tokens as the screen, so a palette change moves both together --
+     previously this block carried its own hardcoded #000/#333/#999/#bbb and
+     drifted from the app every time the app changed.
+
+     Ink and rules are tokens; grounds go white because paper is white and
+     printing a warm ground wastes toner without adding information. */
+  @page { margin: 16mm 14mm; }
+  html, body { background: #fff !important; color: var(--ink);
+               font-size: 10.5pt; }
+  .rail, .controls, .no-print, button { display: none !important; }
+  .topbar, .tabs { display: none !important; }
+  .print-only { display: block !important; }
+  .provenance { display: flex !important; flex-wrap: wrap; gap: 4pt 12pt;
+                margin-top: 6pt; padding-top: 5pt;
+                border-top: .5pt solid var(--rule);
+                font: 8pt var(--mono); color: var(--ink-2); }
+  /* The split collapses on paper: a sticky rail beside the prose is a
+     screen affordance and would print as a column of dead buttons. */
+  .split, .split.wide { display: block !important; }
+  .shell { display: block; }
+  .main { padding: 0; max-width: none; }
+  a { color: inherit; text-decoration: none; }
+  .page-head { border-bottom: 1.5pt solid var(--ink); }
+  .page-head h1, .page-head h2 { font-size: 19pt; font-family: var(--serif); }
+  .eyebrow { color: var(--ink); }
+  .meta-row { font-size: 8.5pt; color: var(--ink-2); }
+  section.block > h3 { color: var(--ink); border-bottom: .5pt solid var(--rule);
+                       break-after: avoid; }
+  .prose { font-size: 10.5pt; line-height: 1.5; max-width: none; color: var(--ink); }
+  .prose h1, .prose h2, .prose h3 { break-after: avoid; }
+  .prose table, table.data { font-size: 9pt; }
+  .prose th, .prose td, table.data th, table.data td { border-color: var(--rule); }
+  table.data thead th { position: static; }      /* a sticky header repeats oddly on paper */
+  .panel, .figure, details.step { box-shadow: none; border: .5pt solid var(--rule);
+                                  break-inside: avoid; }
+  .figure svg { max-width: 100% !important; height: auto !important; }
+  details.step > div, details.step > pre { display: block !important; }
+  .step pre { white-space: pre-wrap; word-break: break-word; font-size: 8pt; }
+  .tag { border-color: var(--rule); color: var(--ink); background: none; }
+
+  /* Keep a figure and its caption together, and never split a chart across a
+     page break: half a line chart on each side of a fold is worse than a gap.
+     `break-inside: avoid` on the <figure> alone was not enough -- the caption
+     stayed on one page while the chart moved to the next, leaving an empty
+     bordered box behind. The caption needs break-after and the chart's own
+     wrapper needs its own avoid, because vega-embed injects a div between the
+     figure and the svg and that div was where the break landed. */
+  .figure, figure { break-inside: avoid; page-break-inside: avoid; }
+  .figure > *, .figure .vega-embed, .figure svg {
+    break-inside: avoid; page-break-inside: avoid; }
+  figcaption { break-after: avoid; page-break-after: avoid; }
+  .srcline { break-before: avoid; page-break-before: avoid; }
+
+  /* Semantic colour MUST survive the print pipeline. Chrome drops background
+     paint by default, which would turn the coverage bars into empty outlines
+     and strip the win/loss and diverging cells back to plain text -- the
+     reader would lose the encoding entirely rather than merely see it faintly.
+     This is the rule the suite and the PDF check both guard. */
+  .coverage-bar, .coverage-bar i, .legend i,
+  table.data td.pos, table.data td.neg, table.data td.on,
+  .chip, .verdict, .tag.ok, .tag.bad, .tag.warn, .team-band {
+    print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+  .scroll-y, .scroll-x { max-height: none; overflow: visible; }
+}
+
+/* ============================================================================
+   TEAM THEMING
+   An element gets --team / --team-accent / --team-ink inline from /api/brand;
+   everything here reads those, so one stylesheet dresses thirty franchises and
+   a new team needs no CSS. Nothing outside a team's own surface uses them.
+   ========================================================================== */
+.team-hero { background: var(--team); color: var(--team-ink);
+             border-radius: var(--r2); padding: var(--s4) var(--s5);
+             display: flex; align-items: center; gap: var(--s4);
+             box-shadow: var(--shadow-2); position: relative; overflow: hidden; }
+/* A wash of the secondary colour so two-colour identities read as themselves
+   rather than as one flat block. */
+.team-hero::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+                    background: linear-gradient(104deg, transparent 58%,
+                                                color-mix(in srgb, var(--team-accent) 55%, transparent) 100%); }
+.team-hero > * { position: relative; z-index: 1; }
+.team-hero .crest { width: 60px; height: 60px; flex: 0 0 60px; object-fit: contain;
+                    filter: drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
+.team-hero h1 { font: 650 var(--t-2xl)/1.05 var(--serif); letter-spacing: -.024em; }
+.team-hero .sub { margin-top: var(--s2); font-size: var(--t-sm); font-weight: 500;
+                  letter-spacing: .06em; text-transform: uppercase; opacity: .82; }
+.team-hero .record { margin-left: auto; text-align: right; }
+.team-hero .record .big { font: 650 var(--t-2xl)/1 var(--sans);
+                          font-variant-numeric: tabular-nums; }
+.team-hero .record .cap { font-size: var(--t-xs); letter-spacing: .12em;
+                          text-transform: uppercase; opacity: .8; margin-top: 4px; }
+
+/* Team facts strip under the hero. */
+.facts { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.fact { background: var(--card); border: 1px solid var(--rule); border-radius: var(--r1);
+        padding: 7px var(--s3); font-size: var(--t-sm); }
+.fact b { display: block; font-size: var(--t-xs); letter-spacing: .1em;
+          text-transform: uppercase; color: var(--faint); font-weight: 700; margin-bottom: 2px; }
+.fact.absent { border-style: dashed; color: var(--faint); }
+
+/* Inline crest for lists and tables. */
+.crest-sm { width: 22px; height: 22px; object-fit: contain; vertical-align: -6px; }
+.crest-xs { width: 17px; height: 17px; object-fit: contain; vertical-align: -4px; }
+
+/* A team row carries its own colour as a left edge -- thirty rows, thirty
+   identities, legible before any text is read. */
+.team-row-swatch { display: inline-block; width: 4px; align-self: stretch;
+                   background: var(--team); border-radius: 2px; }
+table.data tr.team-row td:first-child { box-shadow: inset 3px 0 0 var(--team); }
+
+/* ============================================================================
+   DATA COLOUR — win/loss and above/below. A hue here always means a value.
+   ========================================================================== */
+.wl { display: inline-flex; align-items: center; justify-content: center;
+      min-width: 21px; height: 21px; padding: 0 5px; border-radius: 5px;
+      font: 700 var(--t-xs)/1 var(--sans); letter-spacing: .04em; }
+.wl.w { background: var(--win-w);  color: var(--win);  border: 1px solid var(--win-r); }
+.wl.l { background: var(--loss-w); color: var(--loss); border: 1px solid var(--loss-r); }
+td.margin.pos { color: var(--win); font-weight: 600; }
+td.margin.neg { color: var(--loss); font-weight: 600; }
+.score-win  { font-weight: 700; color: var(--ink); }
+.score-lose { color: var(--muted); }
+
+/* Diverging cell shading for z-scores: five steps, so a column reads as a
+   gradient without turning the table into a heat map nobody can scan. */
+td.z.p3 { background: var(--pos-3); color: #fff; }
+td.z.p2 { background: var(--pos-2); color: #fff; }
+td.z.p1 { background: var(--pos-1); }
+td.z.n1 { background: var(--neg-1); }
+td.z.n2 { background: var(--neg-2); color: #fff; }
+td.z.n3 { background: var(--neg-3); color: #fff; }
+
+/* ============================================================================
+   STICKY HEADER — the shared fix.
+   A scroll container must not carry padding on the axis it scrolls. `.panel`
+   had 16px of top padding AND overflow-y:auto, so rows scrolled up through
+   that padding strip and reappeared ABOVE the sticky header they had just
+   passed under, while the row behind the header vanished. Fixing it on the
+   component fixes every table at once; no page overrides this.
+   ========================================================================== */
+
+table.data thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--card);
+  /* Collapsed borders do not travel with a sticky cell, so the hairline under
+     the header is drawn as an inset shadow instead of a border. */
+  box-shadow: inset 0 -1.5px 0 var(--ink-2);
+  background-clip: padding-box;
+}
+/* Nothing in the body may out-stack the header. */
+table.data tbody td, table.data tbody tr { z-index: 0; }
+
+/* ============================================================================
+   CONFERENCE / DIVISION GROUPING
+   ========================================================================== */
+.conf-head { display: flex; align-items: baseline; gap: var(--s3);
+             margin: var(--s5) 0 var(--s2); }
+.conf-head h2 { font: 650 var(--t-xl)/1.1 var(--serif); letter-spacing: -.02em; }
+.conf-head .count { color: var(--faint); font-size: var(--t-sm); }
+.div-head { font: 700 var(--t-xs)/1 var(--sans); letter-spacing: .13em;
+            text-transform: uppercase; color: var(--muted);
+            margin: var(--s4) 0 6px; }
+
+/* ============================================================================
+   HOME — visual weight, not paragraphs.
+   ========================================================================== */
+.hero { border-radius: var(--r3); padding: var(--s7) var(--s7) var(--s6);
+        background: linear-gradient(135deg, #10203c 0%, #1b4ea8 58%, #2f6fd0 100%);
+        color: #fff; box-shadow: var(--shadow-2); position: relative; overflow: hidden; }
+.hero h1 { font: 650 var(--t-4xl)/1.02 var(--serif); letter-spacing: -.03em;
+           max-width: 14em; }
+.hero p { margin: var(--s3) 0 0; font-size: var(--t-md); max-width: 34em; opacity: .9; }
+.hero .stats { display: flex; flex-wrap: wrap; gap: var(--s6); margin-top: var(--s5);
+               position: relative; z-index: 1; }
+.hero .stats div b { display: block; font: 650 var(--t-2xl)/1 var(--sans);
+                     font-variant-numeric: tabular-nums; }
+.hero .stats div span { font-size: var(--t-xs); letter-spacing: .12em;
+                        text-transform: uppercase; opacity: .78; }
+/* A faint wall of the thirty crests behind the hero: imagery that is actually
+   the subject, not stock texture. */
+/* Bleeding past the edges and spacing evenly stops the crests reading as a
+   clipped top row with empty space under it. */
+.hero .crestwall { position: absolute; inset: -6% -3%; display: flex; flex-wrap: wrap;
+                   align-content: space-evenly; justify-content: space-evenly;
+                   gap: 10px 22px; opacity: .085; pointer-events: none; }
+.hero .crestwall img { width: 60px; height: 60px; object-fit: contain;
+                       filter: grayscale(1) brightness(3); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+         gap: var(--s3); margin-top: var(--s5); }
+.tile { display: block; text-decoration: none; color: inherit; background: var(--card);
+        border: 1px solid var(--rule); border-radius: var(--r2); padding: var(--s4);
+        box-shadow: var(--shadow); transition: transform .12s ease, box-shadow .12s ease,
+                    border-color .12s ease; }
+.tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-2);
+              border-color: var(--accent-r); }
+.tile .g { display: block; line-height: 0; color: var(--accent); }
+.tile .g svg { display: block; }
+.tile h3 { margin-top: var(--s2); font: 650 var(--t-md)/1.25 var(--serif);
+           letter-spacing: -.015em; }
+.tile p { margin: var(--s2) 0 0; color: var(--muted); font-size: var(--t-sm); line-height: 1.5; }
+
+/* ============================================================================
+   RESULTS TABLE — matchup, score and outcome legible at a glance.
+   ========================================================================== */
+table.results td.matchup { text-align: left; white-space: nowrap; }
+table.results td.matchup .ha { display: inline-block; width: 26px; color: var(--faint);
+                               font-size: var(--t-xs); font-weight: 700;
+                               letter-spacing: .06em; text-transform: uppercase; }
+table.results td.matchup .opp { font-weight: 600; }
+table.results td.score { font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.results tr.win  td:first-child { box-shadow: inset 3px 0 0 var(--win); }
+table.results tr.loss td:first-child { box-shadow: inset 3px 0 0 var(--loss); }
+
+/* Scoreboard: the result of the game, stated once, large. */
+.scoreboard { display: flex; align-items: stretch; gap: var(--s3);
+              margin-bottom: var(--s5); }
+.sb-side { flex: 1; display: flex; align-items: center; gap: var(--s3);
+           background: var(--card); border: 1px solid var(--rule);
+           border-left: 4px solid var(--team); border-radius: var(--r2);
+           padding: var(--s3) var(--s4); box-shadow: var(--shadow); }
+.sb-crest { width: 34px; height: 34px; object-fit: contain; }
+.sb-abbr { font: 650 var(--t-lg)/1 var(--sans); letter-spacing: -.01em; }
+.sb-ha { font-size: var(--t-xs); letter-spacing: .12em; text-transform: uppercase;
+         color: var(--faint); margin-top: 3px; }
+.sb-score { margin-left: auto; font: 400 var(--t-2xl)/1 var(--sans);
+            font-variant-numeric: tabular-nums; color: var(--muted); }
+.sb-score.won { font-weight: 700; color: var(--ink); }
+.sb-at { align-self: center; color: var(--faint); font-size: var(--t-xs);
+         letter-spacing: .12em; text-transform: uppercase; }
+@media (max-width: 760px) { .scoreboard { flex-direction: column; } }
+
+/* The column a table is ordered by, marked on the body cells too -- a header
+   arrow alone is easy to lose in twenty columns. */
+table.data td.sorted-cell { background: var(--accent-w); font-weight: 650; }
+table.data th.sorted { color: var(--accent); }
+
+/* ---- model builder: variable picker ------------------------------------- */
+.chosen { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--s3);
+          min-height: 28px; align-items: center; }
+.var-search { width: 100%; margin-bottom: var(--s3); padding: 7px var(--s3);
+              border: 1px solid var(--rule); border-radius: var(--r1);
+              font: var(--t-sm) var(--sans); background: var(--paper); }
+.vgroup { border-top: 1px solid var(--rule-2); }
+.vgroup:first-of-type { border-top: 0; }
+.vgroup-head { display: flex; align-items: center; gap: var(--s2); width: 100%;
+               background: none; border: 0; cursor: pointer; padding: 9px 0;
+               color: var(--ink); text-align: left; }
+.vgroup-head .caret { color: var(--faint); width: 11px; }
+.vgroup-head .nm { font: 700 var(--t-xs)/1 var(--sans); letter-spacing: .11em;
+                   text-transform: uppercase; }
+.vgroup-head .ct { color: var(--faint); font-size: var(--t-xs);
+                   font-variant-numeric: tabular-nums; }
+.vgroup-head .picked { margin-left: auto; color: var(--accent);
+                       font-size: var(--t-xs); font-weight: 650; }
+.vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+         gap: 6px; padding: 0 0 var(--s3); }
+/* The variable picker's buttons. These were also called `.chip`, which
+   collided with the status chip introduced in 8e -- that one is an inline
+   nowrap pill, and inheriting its `white-space: nowrap` stopped a long
+   variable name wrapping, so the picker pushed the model builder 376px wider
+   than the viewport at 420. Different component, different name. */
+.vchip { text-align: left; background: var(--card); border: 1px solid var(--rule);
+         border-radius: var(--r1); padding: 7px var(--s3); cursor: pointer;
+         color: var(--ink); font: var(--t-sm)/1.35 var(--sans);
+         white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.vchip:hover { border-color: var(--accent-r); background: var(--accent-w); }
+.vchip.on { background: var(--accent); border-color: var(--accent);
+            color: #fff; font-weight: 600; }
+.vchip.on:hover { background: var(--accent-2); }
+.vchip .chip-label { display: block; font-weight: 600; }
+.vchip .chip-mean { display: block; margin-top: 2px; font-size: var(--t-xs);
+                    color: var(--muted); overflow-wrap: anywhere; }
+.vchip.on .chip-mean { color: rgba(255,255,255,.82); }
+.vchip .fixed-mark { margin-left: 6px; font-size: 9.5px; letter-spacing: .09em;
+                    text-transform: uppercase; color: var(--warn);
+                    border: 1px solid var(--warn-r); border-radius: 3px;
+                    padding: 0 4px; font-weight: 700; }
+.chip.on .fixed-mark { color: #fff; border-color: rgba(255,255,255,.5); }
+.chosen .chip .x { margin-left: 7px; opacity: .8; }
+
+/* A chart may never exceed its frame. Vega sizes the plot area, not the whole
+   SVG, so axis titles push past a fixed width; this is the backstop for any
+   chart that is still given pixels rather than "container". */
+.chart-box { width: 100%; max-width: 100%; overflow: hidden; }
+.chart-box svg { max-width: 100%; height: auto; display: block; }
+.figure { min-width: 0; }
+.grid.two > * { min-width: 0; }
+
+/* ---- A1: the two conferences side by side ------------------------------ */
+/* minmax(0, …) for the same reason as .shell: each column holds a standings
+   table, and a bare 1fr lets that table set the track width. */
+.conf-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+             gap: var(--s5); }
+.conf-cols > div { min-width: 0; }
+.conf-head.first { margin-top: var(--s5); }
+@media (max-width: 1080px) { .conf-cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- A2: zebra striping -------------------------------------------------
+   Neutral, not team-coloured: a mixed table carries many franchises and
+   thirty brand colours down one column is a rainbow, not a reading aid. The
+   stripe sits under the team's left-edge swatch, which still identifies the
+   row. Hover and the sorted column both stay visible over it. */
+table.data tbody tr:nth-child(even) { background: var(--n1); }
+table.data tbody tr:hover { background: var(--n2); }
+table.data tbody tr:nth-child(even) td.sorted-cell,
+table.data tbody tr td.sorted-cell { background: var(--accent-w); }
+
+/* ---- matchup ------------------------------------------------------------ */
+.catbar { height: 7px; background: var(--n3); border-radius: 4px; overflow: hidden; }
+.catbar-fill { height: 100%; border-radius: 4px; }
+.catbar-fill.w { background: var(--win); }
+.catbar-fill.l { background: var(--loss); }
+.flip { display: flex; gap: var(--s4); align-items: baseline;
+        padding: 9px 0; border-top: 1px solid var(--rule-2); }
+.flip:first-child { border-top: 0; }
+.flip-cat { flex: 0 0 56px; font: 700 var(--t-xs)/1 var(--sans);
+            letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+table.data tr.win td:first-child  { box-shadow: inset 3px 0 0 var(--win); }
+table.data tr.loss td:first-child { box-shadow: inset 3px 0 0 var(--loss); }
+
+/* ---- validated findings ------------------------------------------------- */
+.finding { background: var(--card); border: 1px solid var(--rule);
+           border-left: 4px solid var(--n5); border-radius: var(--r2);
+           padding: var(--s3) var(--s4); margin-bottom: var(--s3);
+           box-shadow: var(--shadow); }
+.finding.ok   { border-left-color: var(--win); }
+.finding.bad  { border-left-color: var(--loss); }
+.finding.warn { border-left-color: var(--warn); }
+.finding-head { display: flex; align-items: baseline; gap: var(--s3); width: 100%;
+                background: none; border: 0; padding: 0; cursor: pointer;
+                text-align: left; color: inherit; }
+.finding-q { flex: 1; font: 600 var(--t-md)/1.4 var(--serif); }
+.finding-caret { color: var(--faint); }
+.finding-facets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s3); }
+.finding-facets .fact { padding: 5px 9px; }
+.confounds { display: flex; flex-wrap: wrap; gap: 5px; align-items: baseline;
+             margin-top: var(--s2); }
+
+/* ---- compare / trade ---------------------------------------------------- */
+.picker { background: var(--card); border: 1px solid var(--rule);
+          border-radius: var(--r2); padding: var(--s3) var(--s4); }

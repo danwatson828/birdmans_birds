@@ -47,6 +47,7 @@ and the notes in schema.sql):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -587,6 +588,19 @@ def write_snapshot(db_path: Path, snapshot_path: Path) -> dict:
     stray_wal.unlink(missing_ok=True)
 
     os.replace(tmp, snapshot_path)
+
+    # Checksum sidecar. A file cannot contain its own checksum, so it goes
+    # alongside. Saved analyses record it to identify exactly which snapshot they
+    # ran against: row counts plus a max date do NOT identify a snapshot, because
+    # a corrective backfill can rewrite values in place without moving either.
+    # Costs ~0.3s for a 174MB file.
+    digest = hashlib.sha256()
+    with open(snapshot_path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(8 << 20), b""):
+            digest.update(chunk)
+    sha = digest.hexdigest()
+    Path(str(snapshot_path) + ".sha256").write_text(
+        f"{sha}  {snapshot_path.name}\n")
 
     with duckdb.connect(str(snapshot_path), read_only=True) as con:
         snap = _table_counts(con)

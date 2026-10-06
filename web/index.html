@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBA Analytics — eighty seasons of box scores</title>
+<meta name="description" content="Eighty seasons of NBA box scores, 1946-47 to 2025-26: leaderboards, team and player pages, a model builder, and reproducible saved analyses with their SQL.">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#14387a">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<meta property="og:title" content="NBA Analytics">
+<meta property="og:description" content="Eighty seasons of NBA box scores, with every analysis saved alongside the SQL that produced it.">
+<meta property="og:type" content="website">
+<!-- Type is self-hosted and loaded before app.css so the first paint has it:
+     no CDN, no network at all, and the exported PDF renders identically. -->
+<link rel="preload" href="/static/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/IBMPlexMono-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/fonts.css">
+<link rel="stylesheet" href="/static/app.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/14.1.3/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vega/5.30.0/vega.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vega-lite/5.21.0/vega-lite.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vega-embed/6.26.0/vega-embed.min.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div id="root"></div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>
