@@ -302,6 +302,39 @@ def _ex():
         return _explore_con
 
 
+_fantasy_con = None
+
+
+def _fx():
+    """A SECOND read-only connection, for the fantasy endpoints.
+
+    They were using `_ex()` -- the shared explore connection -- while holding
+    `_matchup_lock` rather than `_explore_lock`. Two different locks guarding
+    one DuckDB connection is no mutual exclusion at all, so a fantasy request
+    and an explore request running concurrently crossed each other's cursors:
+    one would return the other's columns and rows. The symptom was a totals
+    object coming back as `{"games": 3, "seasons": "pts", ...}` -- a row from
+    somebody else's query.
+
+    That is the same failure the comment above `explore_coverage` records
+    ("one came back with another request's columns and 400'd"); it was patched
+    at that one call site by taking `_explore_lock`, and the shared cause left
+    in place. It surfaced again as soon as a page fetched an explore endpoint
+    and a fantasy endpoint at the same time.
+
+    A dedicated connection rather than widening `_explore_lock`, because these
+    calls can run for seconds behind an ESPN sync and every explore request
+    would otherwise queue behind them. DuckDB allows many read-only
+    connections to one file, and the fantasy paths are already serialised
+    among themselves by `_matchup_lock`.
+    """
+    global _fantasy_con
+    with _explore_lock:
+        if _fantasy_con is None:
+            _fantasy_con = _duckdb.connect(str(analyses.SNAPSHOT), read_only=True)
+        return _fantasy_con
+
+
 def _rows(sql: str, params: list | None = None) -> list[dict]:
     with _explore_lock:
         cur = _ex().execute(sql, params or [])
@@ -563,6 +596,61 @@ def explore_seasons(game_type: str = "regular") -> dict:
                     GROUP BY season ORDER BY season DESC""", [gt])
     return {"game_type": gt, "seasons": rows,
             "latest": rows[0]["season"] if rows else None}
+
+
+@app.get("/api/home")
+def home_panel(games: int = 8) -> dict:
+    """What the Overview needs, in one round trip.
+
+    Read-only and additive: no existing endpoint changes. The page previously
+    made four calls and still had no league results to show.
+
+    THERE ARE NO FUTURE FIXTURES IN THIS SNAPSHOT. Every game of the newest
+    season is `final` -- `SELECT count(*) ... WHERE home_team_score IS NULL`
+    returns 0 -- so "next fixtures" cannot be answered honestly and this
+    returns the most RECENT results instead, with `results_are` saying which
+    it is. A home page that invented a schedule would be the one piece of
+    fabricated data in an application built to avoid exactly that.
+    """
+    gt = _game_type("regular")
+    latest = _rows("SELECT max(season) AS s FROM v_games WHERE game_type = ?", [gt])
+    season = latest[0]["s"] if latest else None
+    recent = _rows(
+        """SELECT game_id, game_date, season_label,
+                  home_team_id, visitor_team_id,
+                  home_team_score, visitor_team_score
+           FROM v_games
+           WHERE game_type = ? AND season = ?
+             AND home_team_score IS NOT NULL AND visitor_team_score IS NOT NULL
+           ORDER BY game_date DESC, game_id DESC
+           LIMIT ?""", [gt, season, max(1, min(games, 24))])
+    for r in recent:
+        r["home_brand"] = team_brand.brand_for(r["home_team_id"])
+        r["visitor_brand"] = team_brand.brand_for(r["visitor_team_id"])
+        r["home_won"] = r["home_team_score"] > r["visitor_team_score"]
+
+    totals = _rows(
+        """SELECT count(*) AS games, count(DISTINCT season) AS seasons,
+                  min(season) AS first_season, max(season) AS last_season
+           FROM v_games WHERE game_type = ?""", [gt])
+
+    # Two real series for the sparklines on the entry tiles. Same source as the
+    # League evolution page, so the little chart and the big one cannot drift.
+    spark = _rows(
+        """SELECT season,
+                  round(sum(pts) * 1.0 / nullif(count(DISTINCT game_id) * 2, 0), 2)
+                    AS pts_per_team_game,
+                  round(sum(fg3a) * 1.0 / nullif(sum(fga), 0), 4) AS three_point_rate
+           FROM v_player_games
+           WHERE game_type = ? AND NOT is_dnp AND season >= 1980
+           GROUP BY season ORDER BY season""", [gt])
+
+    return {"season": season,
+            "results_are": "most recent completed games; this snapshot holds no "
+                           "scheduled fixtures",
+            "recent_games": recent,
+            "totals": totals[0] if totals else {},
+            "spark": spark}
 
 
 @app.get("/api/brand")
@@ -2692,7 +2780,7 @@ def fantasy_recap(season: int | None = None) -> dict:
     """The just-concluded season: lineup cost, missed wire, final standing."""
     import matchup as mu
     with _matchup_lock:
-        con = _ex()
+        con = _fx()
         try:
             league = mu.load_league(mu.latest_cache())
         except SystemExit as exc:
@@ -3012,7 +3100,7 @@ def fantasy_matchup(season: int | None = None, week_start: str | None = None) ->
     import matchup as mu
     with _matchup_lock:
         try:
-            con = _ex()
+            con = _fx()
             d = mu.build(con, season, week_start)
         except SystemExit as exc:
             raise HTTPException(503, str(exc))
@@ -3024,7 +3112,7 @@ def fantasy_outlook(season: int | None = None, weeks: int = 3) -> dict:
     """Season outlook, multi-week fixture load, and today's digest."""
     import matchup as mu
     with _matchup_lock:
-        con = _ex()
+        con = _fx()
         try:
             league = mu.load_league(mu.latest_cache(season))
         except SystemExit as exc:
@@ -3050,7 +3138,7 @@ def fantasy_retrospective(season: int | None = None,
     if objective not in ("production", "categories"):
         raise HTTPException(400, "objective must be 'production' or 'categories'")
     with _matchup_lock:
-        con = _ex()
+        con = _fx()
         try:
             league = mu.load_league(mu.latest_cache())
         except SystemExit as exc:
@@ -3092,7 +3180,7 @@ def narrate_kind(kind: str, req: NarrateRequest | None = None) -> dict:
                          window=req.window)))
     else:
         with _matchup_lock:
-            con = _ex()
+            con = _fx()
             try:
                 league = mu.load_league(mu.latest_cache())
             except SystemExit as exc:

@@ -65,6 +65,24 @@
   --accent-r: #bed0ea;
   --focus:    #11417f;
 
+  /* --- section accents (item 11) ----------------------------------------
+     One signature colour per nav group, used for that section's header band,
+     its active nav state and its first chart series. `--sec` is set on the
+     shell from the current route and every page reads it, so a page cannot
+     forget to carry its section's colour.
+
+     Chosen for separability FROM EACH OTHER first: blue 215deg, violet 270deg,
+     amber 35deg are the most distinguishable triple available that also keeps
+     4.5:1 as text on all three grounds AND carries white at 4.5:1 for a band.
+     Amber sits closest to the loss red, which is a real consideration on the
+     fantasy pages -- but a section band is a large field at the top of the
+     page, never an inline chip beside a number, and the alternative hues
+     (teal, rose) collide with the win green or the League blue instead. */
+  --sec-league:   #11417f;
+  --sec-analysis: #5b3a8e;
+  --sec-fantasy:  #8a4a0c;
+  --sec: var(--sec-league);
+
   --win:  #0f6b42;  --win-w:  #e4f2eb;  --win-r:  #a6d2bb;
   --loss: #a82f27;  --loss-w: #fbe9e7;  --loss-r: #eeb9b3;
   --good: var(--win);  --good-w: var(--win-w);  --good-r: var(--win-r);
@@ -193,6 +211,11 @@ code, pre { font-family: var(--mono); }
    inheriting one because reports need it. */
 .shell { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr);
          min-height: 100vh; }
+/* The shell carries the current section, so --sec resolves once and every
+   descendant inherits it. */
+.shell[data-section="League"]   { --sec: var(--sec-league); }
+.shell[data-section="Analysis"] { --sec: var(--sec-analysis); }
+.shell[data-section="Fantasy"]  { --sec: var(--sec-fantasy); }
 .rail { background: var(--card); border-right: 1px solid var(--rule);
         position: sticky; top: 0; height: 100vh;
         display: flex; flex-direction: column; overflow: hidden; }
@@ -213,9 +236,10 @@ code, pre { font-family: var(--mono); }
               align-items: center; justify-content: center; color: var(--faint); }
 .nav .glyph svg { display: block; }
 .nav a:hover { background: var(--sunken); color: var(--ink); }
-.nav a[aria-current="page"] { background: var(--accent-w); color: var(--accent);
-                              border-left-color: var(--accent); font-weight: 700; }
-.nav a[aria-current="page"] .glyph { color: var(--accent); }
+.nav a[aria-current="page"] { background: color-mix(in srgb, var(--sec) 9%, #fff);
+                              color: var(--sec); border-left-color: var(--sec);
+                              font-weight: 700; }
+.nav a[aria-current="page"] .glyph { color: var(--sec); }
 .rail-foot { margin-top: auto; padding: var(--s2) var(--s4);
              border-top: 1px solid var(--rule);
              font: 400 var(--t-xs)/1.3 var(--mono); color: var(--muted); }
@@ -247,13 +271,15 @@ code, pre { font-family: var(--mono); }
    Compact by default: an eyebrow, a title and a right-aligned meta strip on
    ONE line where the title is short. The old header was a 42px serif title,
    a 17px lede and a stat row -- about 180px of chrome before any data. */
+/* Every page gets a band of equal presence: a 3px rule in the section
+   accent, or the team colour where a team or player is the subject. */
 .page-head { display: flex; align-items: flex-end; gap: var(--s4);
-             flex-wrap: wrap; border-bottom: 2px solid var(--ink);
+             flex-wrap: wrap; border-bottom: 3px solid var(--sec);
              padding-bottom: var(--s2); margin-bottom: var(--s4); }
 .page-head .lhs { min-width: 0; flex: 1 1 auto; }
 .eyebrow { font: 700 var(--t-xs)/1 var(--sans); font-stretch: 85%;
            letter-spacing: .14em; text-transform: uppercase;
-           color: var(--accent); margin-bottom: 4px; }
+           color: var(--sec); margin-bottom: 4px; }
 .page-head h1, .page-head h2 { margin: 0; font: 700 var(--t-2xl)/1.1 var(--sans);
                                letter-spacing: -.025em; text-wrap: balance; }
 .page-head .lede { margin: var(--s2) 0 0; font-size: var(--t-md);
@@ -469,88 +495,89 @@ code, pre { font-family: var(--mono); }
                    letter-spacing: .13em; text-transform: uppercase;
                    color: var(--faint); margin-bottom: var(--s2); }
 
-/* --------------------------------------------------------------- home hero --
-   A header with imagery rather than a flat colour band. The crests ARE the
-   subject of this application, so they are the picture: a tiled wall behind a
-   dark scrim, at an opacity where they read as texture until you look at them.
-   Height is capped so the page opens on content rather than on a banner. */
-.home-hero { position: relative; overflow: hidden; border-radius: var(--r3);
-             background: var(--accent); color: #fff; padding: var(--s6) var(--s6) var(--s5);
-             min-height: 190px; display: flex; flex-direction: column;
-             justify-content: flex-end; gap: var(--s4); }
-.home-hero .crestwall { position: absolute; inset: -4% -2%; display: flex;
-                        flex-wrap: wrap; gap: 10px; opacity: .13;
-                        pointer-events: none; transform: rotate(-7deg); }
-.home-hero .crestwall img { width: 54px; height: 54px; object-fit: contain;
-                            filter: grayscale(1) brightness(3); }
-.home-hero::after { content: ""; position: absolute; inset: 0;
-                    background: linear-gradient(105deg,
-                      var(--accent) 34%, rgba(17,65,127,.72) 100%); }
-.home-hero > * { position: relative; z-index: 1; }
-.home-hero .eyebrow { color: rgba(255,255,255,.82); }
-.home-hero h1 { margin: 0; font: 800 var(--t-3xl)/1.06 var(--sans);
-                letter-spacing: -.03em; max-width: 24ch; text-wrap: balance; }
-.home-hero p { margin: var(--s2) 0 0; font-size: var(--t-md);
-               color: rgba(255,255,255,.88); max-width: 62ch; }
-.home-hero .hh-stats { display: flex; flex-wrap: wrap; gap: var(--s6);
-                       border-top: 1px solid rgba(255,255,255,.26);
-                       padding-top: var(--s3); }
-.home-hero .hh-stats b { display: block; font: 600 var(--t-xl)/1 var(--mono);
+/* ============================================================== OVERVIEW ==
+   A header band, a prominent search, quick-launch tiles carrying real
+   imagery, a live week, latest results, then recent analyses. Freshness sits
+   in the footer, not the hero -- a checksum is provenance, not a headline. */
+.home-band { position: relative; overflow: hidden; border-radius: var(--r3);
+             background: linear-gradient(104deg, var(--sec) 0%,
+                         color-mix(in srgb, var(--sec) 74%, #000) 100%);
+             color: #fff; padding: var(--s5) var(--s6);
+             display: flex; align-items: flex-end; gap: var(--s6); flex-wrap: wrap; }
+.home-band .hb-text { flex: 1 1 420px; min-width: 0; }
+.home-band .eyebrow { color: rgba(255,255,255,.82); }
+.home-band h1 { margin: 0 0 var(--s3); font: 800 var(--t-3xl)/1.05 var(--sans);
+                letter-spacing: -.03em; max-width: 20ch; text-wrap: balance; }
+.hb-search { display: flex; align-items: center; gap: var(--s2);
+             background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3);
+             border-radius: var(--r2); padding: 0 var(--s3); max-width: 430px; }
+.hb-search .g { color: rgba(255,255,255,.85); line-height: 0; }
+.hb-search input { flex: 1 1 auto; background: none; border: 0; color: #fff;
+                   font: 500 var(--t-md)/1 var(--sans); padding: 9px 0; min-width: 0; }
+.hb-search input::placeholder { color: rgba(255,255,255,.74); }
+.hb-search input:focus { outline: none; }
+.hb-search:focus-within { border-color: #fff; }
+.home-band .hb-stats { display: flex; gap: var(--s5); flex-wrap: wrap; }
+.home-band .hb-stats b { display: block; font: 600 var(--t-xl)/1 var(--mono);
                          letter-spacing: -.03em; }
-.home-hero .hh-stats span { font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+.home-band .hb-stats span { display: block; margin-top: 3px;
+                            font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
                             letter-spacing: .13em; text-transform: uppercase;
-                            color: rgba(255,255,255,.76); display: block;
-                            margin-top: 4px; }
+                            color: rgba(255,255,255,.80); }
 
-/* Shown only when printing. The inverse of .no-print, for the few things a
-   PDF needs that the screen puts somewhere a PDF cannot reach. */
-.print-only { display: none; }
+/* Quick-launch tiles. Each carries real imagery -- a crest mosaic, a sparkline
+   off the same series the evolution page charts -- rather than an icon over a
+   sentence. */
+.entry { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+         gap: var(--s3); margin-top: var(--s4); }
+.etile { display: flex; flex-direction: column; gap: var(--s2);
+         padding: var(--s3) var(--s4) var(--s4); text-decoration: none; color: inherit;
+         background: var(--card); border: 1px solid var(--rule);
+         border-top: 3px solid var(--sec); border-radius: var(--r2); min-height: 118px; }
+.etile:hover { border-color: var(--sec); background: var(--sunken); }
+.etile .et-head { display: flex; align-items: center; gap: var(--s2); }
+.etile .et-head .g { color: var(--sec); line-height: 0; }
+.etile h3 { margin: 0; font: 700 var(--t-md)/1.2 var(--sans); letter-spacing: -.01em; }
+.etile p { margin: 0; font-size: var(--t-sm); color: var(--muted); line-height: 1.45; }
+.et-mosaic { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+             margin-top: auto; }
+.et-mosaic img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+.et-spark { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+.et-spark span { font: 500 var(--t-xs)/1 var(--mono); color: var(--muted); }
+.spark { display: block; }
 
-/* `.meta-row` survives on several pages that still use it. It lost its
-   spacing when the page header became a flex row, so the spans ran together
-   ("2,836 player-seasons815 players"). */
-.meta-row { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: baseline;
-            margin-top: var(--s2);
-            font: 400 var(--t-xs)/1.5 var(--mono); color: var(--muted); }
-.meta-row > span { display: inline-flex; align-items: baseline; gap: 4px; }
-.meta-row b { color: var(--ink); font-weight: 600; }
+/* Live week beside latest results. */
+.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+             gap: var(--s4); margin-top: var(--s5); align-items: start; }
+.hg-week, .hg-results { background: var(--card); border: 1px solid var(--rule);
+                        border-radius: var(--r2); padding: var(--s3) var(--s4) var(--s4); }
+.wk-score { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.wk-score .n { font: 600 var(--t-2xl)/1 var(--mono); letter-spacing: -.03em; }
+.wk-score .l { font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+               letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+/* --n5 is a border value at 2.03:1 and must never carry text; the score
+   separator is a glyph, so it takes the faint text token. */
+.wk-score .sep { color: var(--faint); font: 400 var(--t-xl)/1 var(--mono); }
+.wk-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: var(--s3); }
+.wk-note { margin: var(--s3) 0 0; font-size: var(--t-sm); color: var(--muted); }
 
-/* The model builder's control stack: every field on its own row at the rail's
-   width, labels above inputs rather than beside them. */
-.modelctl { display: flex; flex-direction: column; gap: var(--s3); }
-.modelctl .field { display: flex; flex-direction: column; align-items: stretch;
-                   gap: 4px; font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
-                   letter-spacing: .1em; text-transform: uppercase;
-                   color: var(--faint); }
-.modelctl .field select, .modelctl .field input { width: 100%; }
-.modelctl .field > input[type="number"] { flex: 1 1 auto; }
-
-/* Notes expand inside their card rather than rendering inline for all 60
-   analyses at once, which is what made this page 8196px tall. */
-.kcard.open { grid-column: 1 / -1; }
-.kc-notes { display: flex; flex-direction: column; gap: var(--s2);
-            margin-top: var(--s2); padding-top: var(--s2);
-            border-top: 1px solid var(--rule-2); }
-.kc-note { border-left: 3px solid var(--rule); padding-left: var(--s3);
-           font-size: var(--t-sm); }
-/* A question can be a paragraph -- one saved analysis opens with 600 words of
-   hypothesis -- so the title clamps too. Without this a single long question
-   set the row height for every card beside it. */
-.kcard .q { font: 600 var(--t-md)/1.35 var(--sans); color: var(--ink);
-            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-            overflow: hidden; }
-.kcard .q:hover { color: var(--accent); text-decoration: underline; }
-.kcard { min-height: 132px; }
-
-/* The report rail: provenance as a definition list, actions stacked. */
-.runmeta { display: flex; flex-direction: column; gap: 5px; }
-.runmeta > div { display: flex; justify-content: space-between; gap: var(--s3);
-                 font: 400 var(--t-xs)/1.4 var(--mono); }
-.runmeta span { color: var(--faint); }
-.runmeta b { color: var(--ink); font-weight: 500; text-align: right;
-             overflow: hidden; text-overflow: ellipsis; }
-.stackbtn { display: flex; flex-direction: column; gap: var(--s2); }
-.stackbtn > * { width: 100%; justify-content: center; }
+/* Latest results: a scoreline list, each side carrying its franchise colour. */
+.rg { list-style: none; margin: 0; padding: 0; }
+.rg li { display: grid; grid-template-columns: 82px 1fr auto 18px 1fr auto;
+         align-items: center; gap: var(--s2); padding: 4px 0;
+         border-bottom: 1px solid var(--rule-2);
+         font: 400 var(--t-sm)/1.3 var(--mono); }
+.rg li:last-child { border-bottom: 0; }
+.rg .d { color: var(--faint); font-size: var(--t-xs); }
+.rg .t { display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+         font-weight: 500; color: var(--ink-2); }
+.rg .t i { width: 3px; height: 13px; background: var(--team); border-radius: 1px;
+           flex: 0 0 3px; }
+.rg .at { color: var(--faint); text-align: center; font-size: var(--t-xs); }
+.rg .s { font-weight: 600; text-align: right; }
+.rg .s.win { color: var(--win); } .rg .s.lose { color: var(--muted); }
+.rg-note { margin: var(--s3) 0 0; font: 400 var(--t-xs)/1.4 var(--mono);
+           color: var(--faint); }
 
 /* A section heading with an action on the right. */
 .sect-head { display: flex; align-items: baseline; justify-content: space-between;

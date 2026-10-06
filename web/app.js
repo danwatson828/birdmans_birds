@@ -19,7 +19,7 @@
 // for a past answer actually goes.
 //
 // Every old URL still resolves: see LEGACY below.
-import { h, useState, useEffect, useCallback, useRef, api, fmt, Spinner, useBrands, installPrintHandlers }
+import { h, useState, useEffect, useCallback, useRef, api, fmt, Spinner, useBrands, installPrintHandlers, pct, token, brandOf, teamStyle }
   from "/static/lib.js";
 import { Report, AskBar } from "/static/ask.js";
 import { Explorer } from "/static/explore.js";
@@ -154,62 +154,140 @@ function SavedList({ items, selected, onSelect, filter, setFilter, tagFilter, se
           })));
 }
 
+// A sparkline drawn from real series data. Inline SVG rather than a chart
+// library: these are 120x28 and a Vega embed per tile would be absurd.
+function Spark({ rows, k, color, label }) {
+  if (!rows || rows.length < 2) return null;
+  const vals = rows.map((r) => r[k]).filter((v) => v != null);
+  if (vals.length < 2) return null;
+  const lo = Math.min(...vals), hi = Math.max(...vals), W = 120, H = 28;
+  const d = vals.map((v, i) =>
+    (i ? "L" : "M") + (i / (vals.length - 1) * W).toFixed(1) + " "
+    + (H - (hi === lo ? 0.5 : (v - lo) / (hi - lo)) * (H - 4) - 2).toFixed(1)).join(" ");
+  return h("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H,
+      className: "spark", role: "img", "aria-label": label },
+    h("path", { d, fill: "none", stroke: color, strokeWidth: 1.75,
+                strokeLinejoin: "round", strokeLinecap: "round" }));
+}
+
 function Home({ go, items, health }) {
   const brands = useBrands();
-  // A header with imagery, then PRIORITISED entry points, then what the store
-  // has actually produced lately. The previous version was a banner above four
-  // identical cards, which said every destination was equally likely -- they
-  // are not: Ask and Teams carry the traffic.
+  const [d, setD] = useState(null);
+  const [wk, setWk] = useState(null);
+  useEffect(() => {
+    api("/api/home?games=8").then(setD).catch(() => setD(false));
+    // The fantasy week is the only genuinely "live" thing on this page.
+    api("/api/fantasy/matchup").then(setWk).catch(() => setWk(false));
+  }, []);
   const crests = brands && brands.teams
     ? Object.values(brands.teams).filter((b) => b.logo) : [];
-  const entries = [
-    ["ask", "Ask a question", "State a methodology, check era coverage, save a "
-      + "reproducible report with its SQL.", true],
-    ["teams", "Teams", "Thirty franchises by conference and division."],
-    ["players", "Players", "Search anyone who has played since 1946."],
-    ["leaders", "Leaderboards", "Rank the league on any stat, one season or a range."],
-    ["model", "Model builder", "Seventy-four variables, fits and clustering."],
+  const bof = (id) => brandOf(brands, id);
+  const tiles = [
+    ["teams", "Teams", "mosaic"],
+    ["players", "Players", null],
+    ["leaders", "Leaderboards", null],
+    ["evolution", "League evolution", "spark"],
   ];
-  return h("div", null,
-    h("section", { className: "home-hero" },
-      h("div", { className: "crestwall", "aria-hidden": "true" },
-        crests.map((b) => h("img", { key: b.abbrev, src: b.logo, alt: "" }))),
-      h("div", { className: "hh-body" },
+
+  return h("div", { className: "home" },
+    h("header", { className: "home-band" },
+      h("div", { className: "hb-text" },
         h("div", { className: "eyebrow" }, "NBA Analytics"),
-        h("h1", null, "Eighty seasons of box scores, and what they will answer"),
-        h("p", null, "Every game from 1946-47 to 2025-26, the fantasy league on "
-          + "top of it, and an agent that shows its working.")),
-      h("div", { className: "hh-stats" },
-        [["1946-47", "First season"], ["2025-26", "Through"],
-         ["30", "Franchises"], [fmt(items.length, 0), "Saved analyses"]]
-          .map(([v, k]) => h("div", { key: k },
-            h("b", null, v), h("span", null, k))))),
+        h("h1", null, "Eighty seasons, every box score"),
+        h("form", { className: "hb-search", role: "search",
+            onSubmit: (e) => { e.preventDefault(); go("players"); } },
+          h("span", { className: "g", "aria-hidden": "true",
+            dangerouslySetInnerHTML: { __html: iconSvg("magnifying-glass", 17) } }),
+          h("input", { type: "search", "aria-label": "Search players or teams",
+            placeholder: "Search a player or a team\u2026",
+            onFocus: () => go("players") }))),
+      h("div", { className: "hb-stats" },
+        [[d ? fmt(d.totals.seasons, 0) : "80", "Seasons"],
+         [d ? fmt(d.totals.games, 0) : "\u2014", "Games"],
+         ["30", "Franchises"],
+         [fmt(items.length, 0), "Analyses"]].map(([v, k]) =>
+          h("div", { key: k }, h("b", null, v), h("span", null, k))))),
 
-    h("div", { className: "entry" }, entries.map(([id, title, body, lead]) =>
-      h("a", { key: id, className: lead ? "lead" : "", href: `?v=${id}`,
+    h("div", { className: "entry" }, tiles.map(([id, title, art]) =>
+      h("a", { key: id, href: `?v=${id}`, className: "etile",
           onClick: (e) => { e.preventDefault(); go(id); } },
-        h("span", { className: "g", "aria-hidden": "true",
+        h("div", { className: "et-head" },
+          h("span", { className: "g", "aria-hidden": "true",
             dangerouslySetInnerHTML: {
-              __html: iconSvg(ROUTES.find((r) => r.id === id).icon, lead ? 22 : 18) } }),
-        h("h3", null, title), h("p", null, body)))),
+              __html: iconSvg(ROUTES.find((r) => r.id === id).icon, 17) } }),
+          h("h3", null, title)),
+        art === "mosaic" && h("div", { className: "et-mosaic", "aria-hidden": "true" },
+          crests.slice(0, 12).map((b) =>
+            h("img", { key: b.abbrev, src: b.logo, alt: "" }))),
+        art === "spark" && d && h("div", { className: "et-spark" },
+          h(Spark, { rows: d.spark, k: "three_point_rate", color: token("--c2"),
+                     label: "Three-point rate by season since 1980" }),
+          h("span", null, "3PAr ", pct(d.spark[0].three_point_rate, 1), " \u2192 ",
+            pct(d.spark[d.spark.length - 1].three_point_rate, 1))),
+        !art && h("p", null, id === "players"
+          ? "Every player since 1946, with totals, per-game, per-36, advanced and shooting."
+          : "Top-ten boards per stat, each stating its qualifier.")))),
 
-    items.length > 0 && h("section", { style: { marginTop: "var(--s6)" } },
+    h("div", { className: "home-grid" },
+      h("section", { className: "hg-week" },
+        h("div", { className: "sect-head" },
+          h("h2", null, "This week"),
+          h("button", { className: "linkish", onClick: () => go("matchup") },
+            "Open matchup")),
+        wk === false ? h("p", { className: "muted" }, "league sync unavailable")
+        : !wk ? h(Spinner, null)
+        : h("div", { className: "wk" },
+            h("div", { className: "wk-score" },
+              h("span", { className: "n" }, (wk.category_wins || {}).me ?? "\u2014"),
+              h("span", { className: "l" }, "you"),
+              h("span", { className: "sep" }, "\u2013"),
+              h("span", { className: "n" }, (wk.category_wins || {}).opponent ?? "\u2014"),
+              h("span", { className: "l" }, wk.opponent || "opponent")),
+            h("div", { className: "wk-cats" }, (wk.state || []).map((c) =>
+              h("span", { key: c.category,
+                  className: "chip " + (c.status === "winning" ? "ok"
+                            : c.status === "losing" ? "bad" : "ghost") },
+                c.category))),
+            (wk.summary || {}).flippable && wk.summary.flippable.length > 0
+              && h("p", { className: "wk-note" },
+                   h("b", null, "Flippable: "), wk.summary.flippable.join(", ")))),
+
+      h("section", { className: "hg-results" },
+        h("div", { className: "sect-head" },
+          h("h2", null, "Latest results"),
+          h("button", { className: "linkish", onClick: () => go("teams") }, "All teams")),
+        !d ? h(Spinner, null) : d === false ? h("p", { className: "err" }, "failed")
+        : h("div", null,
+            h("ul", { className: "rg" }, d.recent_games.map((g) =>
+              h("li", { key: g.game_id },
+                h("span", { className: "d" }, g.game_date),
+                h("span", { className: "t", style: teamStyle(bof(g.visitor_team_id)) },
+                  h("i", null), g.visitor_brand.abbrev || g.visitor_team_id),
+                h("span", { className: "s " + (g.home_won ? "lose" : "win") },
+                  fmt(g.visitor_team_score, 0)),
+                h("span", { className: "at" }, "@"),
+                h("span", { className: "t", style: teamStyle(bof(g.home_team_id)) },
+                  h("i", null), g.home_brand.abbrev || g.home_team_id),
+                h("span", { className: "s " + (g.home_won ? "win" : "lose") },
+                  fmt(g.home_team_score, 0))))),
+            h("p", { className: "rg-note" }, d.results_are)))),
+
+    items.length > 0 && h("section", { style: { marginTop: "var(--s5)" } },
       h("div", { className: "sect-head" },
         h("h2", null, "Recent analyses"),
-        h("button", { className: "linkish",
-            onClick: () => go("knowledge") }, "All saved analyses")),
+        h("button", { className: "linkish", onClick: () => go("knowledge") },
+          "Knowledge base")),
       h("div", { className: "cardgrid" }, items.slice(0, 6).map((a) =>
         h("button", { key: a.id, className: "kcard",
             onClick: () => go("ask", a.id) },
           h("span", { className: "q" }, a.question),
           a.takeaway && h("span", { className: "a" }, a.takeaway),
-          h("span", { className: "foot" },
-            h("span", null, "#" + a.id),
-            a.label && h("span", { className: "chip ghost" }, a.label)))))),
+          h("span", { className: "foot" }, h("span", null, "#" + a.id)))))),
 
     health && h("footer", { className: "page-foot" },
-      h("span", null, "Snapshot ", h("code", null, health.snapshot_sha256.slice(0, 16)), "\u2026"),
+      h("span", null, "Snapshot ", h("code", null, health.snapshot_sha256.slice(0, 12)), "\u2026"),
       h("span", null, health.snapshot),
+      d && h("span", null, `through ${d.recent_games[0] ? d.recent_games[0].game_date : ""}`),
       h("span", null, `${items.length} saved analyses`)));
 }
 
@@ -292,7 +370,8 @@ function App() {
     lab: () => h(FantasyLab, null),
   }[route];
 
-  return h("div", { className: "shell" },
+  const section = (ROUTES.find((r) => r.id === route) || {}).group || "League";
+  return h("div", { className: "shell", "data-section": section },
     h("aside", { className: "rail no-print" },
       h("div", { className: "brand" },
         h("a", { href: "?v=home", onClick: (e) => { e.preventDefault(); go("home"); } },

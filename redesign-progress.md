@@ -25,7 +25,7 @@ alone.**
 | # | Item | State |
 |---|---|---|
 | 0 | Shared table-header bug + standing check | **done** (accepted, do not redo) |
-| 1 | Overview rework | not started |
+| 1 | Overview rework | **done** |
 | 2 | Teams | not started |
 | 3 | Players directory (comparison lives inside) | not started |
 | 4 | Leaderboards (top-N cards) | not started |
@@ -79,6 +79,42 @@ walks every table on every page type and asserts two different invariants —
 first row below the header **at rest**, header pinned at its declared offset
 **once scrolled**. Proven: PASS on fixed (19 tables / 16 page types), FAIL on
 the pre-fix CSS with the exact 46px symptom.
+
+## Item 1 — Overview rework (done)
+
+Header band carrying the section accent and a prominent search; four
+quick-launch tiles with **real** imagery (a 12-crest mosaic, and a sparkline
+drawn from the same series the evolution page charts); a live "This week"
+card beside Latest results; recent analyses as compact cards; freshness in the
+footer.
+
+New read-only endpoint **`/api/home`** (`games` param, capped 1..24) returning
+recent games with brands, league totals, and a 46-season spark series. One
+round trip instead of four. `results_are` states that these are the most
+recent completed games because the snapshot holds no fixtures.
+
+Section accents introduced here (full pass is item 11):
+`--sec-league #11417f`, `--sec-analysis #5b3a8e`, `--sec-fantasy #8a4a0c`.
+`--sec` is set on `.shell` from the route's nav group, so every page inherits
+its section colour. All three clear 4.5:1 as text on all three grounds and
+carry white at >=6.8:1.
+
+### A real bug found and fixed on the way
+
+`/api/home` + `/api/fantasy/matchup` firing together returned **crossed
+cursors**: `totals` came back as `{"games": 3, "seasons": "pts", ...}` -- a row
+from the other query. Cause: the fantasy endpoints took the shared read-only
+connection via `_ex()` while holding `_matchup_lock`, not `_explore_lock`. Two
+locks around one DuckDB connection is no mutual exclusion.
+
+The same failure is recorded in a comment above `explore_coverage` ("one came
+back with another request's columns and 400'd"); it had been patched at that
+one call site and the cause left in place. Fixed properly: `_fx()`, a second
+read-only connection for the five fantasy call sites. Verified with 12
+concurrent `/api/home` against 6 `/api/fantasy/matchup` -- 0 crossed responses.
+
+This is an api.py change, but it is a correctness fix, not a semantic one: no
+endpoint's contract changed, they just stopped returning each other's rows.
 
 ## Baseline to beat
 
