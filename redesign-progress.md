@@ -309,6 +309,25 @@ All three accents clear 4.5:1 as text on all three grounds and carry white at
 >=6.8:1. Amber is nearest the loss red; it is used only as a large header
 field and never as an inline chip beside a number.
 
+## Verification (all items)
+
+- **Contact sheet**: 34 shots (17 page types x 2 widths), before/after pairs
+  with height deltas, served at `localhost:8004`. Source in
+  `scratchpad/sheet11/`.
+- **Zero horizontal overflow** on all 34 captures.
+- Document height at 1340px, total across 17 pages: **36,272 -> 25,472 (-30%)**.
+  Biggest: knowledge -65%, player -64%, evolution -52%, matchup -42%, game -35%.
+  Three pages grew, all deliberately: leaders +49% (a board of twelve cards
+  where there was one table), compare +22% (the trade analyzer now has the
+  page to itself), home +7%.
+- **Suite 121 passed, 0 failed, 0 skipped** after every item. 654/600/54
+  unchanged. Both `.duckdb` files untouched (2026-10-01 02:09); `semantic.sql`
+  untouched (2026-09-27).
+- **PDF**: 8 pages, 40 `SELECT`, methodology/findings/caveats present, the
+  print-only provenance line present, **zero** app chrome.
+- Nothing forbidden committed anywhere on the branch (no `.duckdb`, `exports/`,
+  `dist/`, `presentations/`, `.env`).
+
 ## Baseline to beat
 
 Phase 8e contact sheet + capture harness:
