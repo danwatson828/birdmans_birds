@@ -39,7 +39,7 @@ function PlayerSearch({ label, onPick, chosen, onDrop }) {
           h("td", { className: "faint" }, `${p.games} g`)))))));
 }
 
-function Comparison({ ids }) {
+export function Comparison({ ids }) {
   const [d, setD] = useState(null);
   useEffect(() => {
     if (ids.length < 2) { setD(null); return; }

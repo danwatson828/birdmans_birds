@@ -479,6 +479,46 @@ code, pre { font-family: var(--mono); }
 .entry p { margin: 0; font-size: var(--t-sm); color: var(--muted); }
 .entry a.lead p { color: rgba(255,255,255,.9); }
 
+/* ---- players directory --------------------------------------------------
+   A wide table that scrolls sideways with the name column pinned, a column
+   picker, and a selection bar for comparison. */
+.pv-wrap { max-height: calc(100vh - 220px); overflow: auto; }
+table.data.pv td.stick, table.data.pv th.stick {
+  position: sticky; left: 0; z-index: 4; background: var(--card);
+  box-shadow: 1px 0 0 var(--rule-2); }
+/* The header cell is sticky in BOTH axes, so it must outrank each on its own. */
+table.data.pv thead th.stick { z-index: 6; }
+table.data.pv tbody tr:hover td.stick { background: var(--sunken); }
+table.data.pv td.pick, table.data.pv th.pick { width: 28px; padding-left: var(--s2); }
+table.data.pv td.pick input { margin: 0; }
+table.data.pv td.name { min-width: 170px; }
+table.data.pv .tm { display: inline-flex; align-items: center; gap: 5px; }
+table.data.pv .tm i { width: 3px; height: 12px; background: var(--team-safe);
+                      border-radius: 1px; flex: 0 0 3px; }
+/* A stat the era cannot support renders as a GAP, never a zero. */
+table.data.pv td.na { background: repeating-linear-gradient(135deg,
+                        transparent 0 3px, var(--rule-2) 3px 4px); }
+.era-note { margin: var(--s3) 0 0; font-size: var(--t-sm); color: var(--muted);
+            max-width: 92ch; }
+
+.colpick { position: relative; }
+.colmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
+           background: var(--card); border: 1px solid var(--rule);
+           border-radius: var(--r2); box-shadow: var(--shadow-2);
+           padding: var(--s2); min-width: 210px; max-height: 60vh; overflow: auto; }
+.cm-presets { display: flex; gap: var(--s3); padding: 2px var(--s2) var(--s2);
+              border-bottom: 1px solid var(--rule-2); margin-bottom: var(--s2); }
+.cm-row { display: flex; align-items: center; gap: var(--s2);
+          padding: 3px var(--s2); font-size: var(--t-sm); cursor: pointer; }
+.cm-row:hover { background: var(--sunken); }
+.cm-na { margin-left: auto; font: 500 var(--t-xs)/1 var(--mono); color: var(--warn); }
+
+.selbar { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+          background: color-mix(in srgb, var(--sec) 8%, #fff);
+          border: 1px solid color-mix(in srgb, var(--sec) 35%, #fff);
+          border-radius: var(--r2); padding: var(--s2) var(--s3);
+          margin-bottom: var(--s3); font-size: var(--t-sm); }
+
 /* ---- teams list rows ----------------------------------------------------
    Crest, name, last-season record, and a franchise colour edge running the
    row's full height. The edge is its own cell rather than a border so it does

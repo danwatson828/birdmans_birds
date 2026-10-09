@@ -6,6 +6,7 @@
 // every stat that was not always recorded is shown against its coverage rather
 // than presented as if the whole span were comparable.
 import { h, useState, useEffect, useRef, useCallback, api, post, fmt, pct, year, Spinner, Chart, useSeasons, SeasonPicker, useBrands, brandOf, teamStyle, Crest, WL, record, token } from "/static/lib.js";
+import { Comparison } from "/static/compare.js";
 
 const GT = ["regular", "playoff", "play_in", "cup_final"];
 const RATE = new Set(["fg_pct", "fg3_pct", "ft_pct", "ts_pct", "efg_pct"]);
@@ -959,48 +960,206 @@ function SearchLanding({ onOpenPlayer, onOpenTeam, hits }) {
                   .map(row))))))))));
 }
 
-// The Players destination. Search is the way in -- it lives in the topbar and
-// is always available -- so this page's job is to give a way in for someone
-// who does not yet have a name in mind, rather than to be an empty box.
+// =========================================================== PLAYERS ======
+// The full-stats directory: everyone, every view, every column sortable.
+//
+// This is a DIRECTORY and Leaderboards is a RANKING. The two pages were built
+// to look alike twice, so the split is structural rather than cosmetic: here
+// nothing decides who is in the table except the filters, and the client sorts
+// by any column; there, each stat picks its own top ten and states a qualifier.
+//
+// Comparison lives here now -- pick up to four and compare in place -- instead
+// of a separate destination that made you find the players a second time.
+const PV_TABS = [["per_game", "Per game"], ["totals", "Totals"],
+                 ["per36", "Per 36"], ["advanced", "Advanced"],
+                 ["shooting", "Shooting"]];
+// "Core" is what the view is for; "All" is every column it offers.
+const PV_CORE = {
+  per_game: ["games_played", "mpg", "ppg", "rpg", "apg"],
+  totals:   ["games_played", "minutes", "pts", "reb", "ast"],
+  per36:    ["games_played", "mpg", "pts_per36", "reb_per36", "ast_per36"],
+  advanced: ["games_played", "usage_pct", "ts_pct_adv", "net_rating", "pie"],
+  shooting: ["games_played", "fga", "fg_pct", "fg3_pct", "ft_pct", "ts_pct"],
+};
+
 function PlayersLanding({ onOpenPlayer }) {
+  const [view, setView] = useState("per_game");
   const [d, setD] = useState(null);
+  const [gt, setGt] = useState("regular");
+  const [minG, setMinG] = useState(20);
+  const [q, setQ] = useState("");
+  const [team, setTeam] = useState("");
+  const [pos, setPos] = useState("");
+  const [sort, setSort] = useState(null);
+  const [dir, setDir] = useState(1);
+  const [cols, setCols] = useState(null);          // null = every column
+  const [pickOpen, setPickOpen] = useState(false);
+  const [sel, setSel] = useState([]);
+  const [showCmp, setShowCmp] = useState(false);
+  const [mode, setMode] = useState("single");
+  const [season, setSeason] = useState(null);
+  const [from, setFrom] = useState(null);
+  const [to, setTo] = useState(null);
+  const seasons = useSeasons(gt);
+
   useEffect(() => {
-    api("/api/explore/leaderboard?stat=ppg&span=season&limit=24")
-      .then(setD).catch(() => setD(false));
-  }, []);
+    setD(null); setSort(null); setCols(null);
+    const p = new URLSearchParams({ view, game_type: gt, min_games: String(minG) });
+    if (mode === "range" && from && to) { p.set("season_from", from); p.set("season_to", to); }
+    else if (season) p.set("season", season);
+    api(`/api/players?${p}`).then(setD).catch(() => setD(false));
+  }, [view, gt, minG, mode, season, from, to]);
+
+  if (d === false) return h("p", { className: "err" }, "failed to load players");
+
+  const allKeys = d ? d.columns.map((c) => c.key) : [];
+  const shown = cols || allKeys;
+  const teams = d ? [...new Map(d.rows.filter((r) => r.brand && r.brand.abbrev)
+      .map((r) => [r.brand.abbrev, r.brand])).values()]
+      .sort((x, y) => x.abbrev.localeCompare(y.abbrev)) : [];
+  const positions = d
+    ? [...new Set(d.rows.map((r) => r.position).filter(Boolean))].sort() : [];
+
+  let rows = d ? d.rows : [];
+  if (q.trim()) {
+    const t = q.trim().toLowerCase();
+    rows = rows.filter((r) => (r.player_name || "").toLowerCase().includes(t));
+  }
+  if (team) rows = rows.filter((r) => r.brand && r.brand.abbrev === team);
+  if (pos) rows = rows.filter((r) => r.position === pos);
+  rows = [...rows].sort(sort
+    // A blanked stat sorts LAST in either direction: it is absent, not zero,
+    // and letting it sink to the bottom of an ascending sort would read as
+    // "worst".
+    ? (x, y) => {
+        const a2 = x[sort], b2 = y[sort];
+        if (a2 == null && b2 == null) return 0;
+        if (a2 == null) return 1;
+        if (b2 == null) return -1;
+        return dir * (b2 - a2);
+      }
+    : (x, y) => (x.player_name || "").localeCompare(y.player_name || ""));
+
+  const by = (k) => () => { if (sort === k) setDir(-dir); else { setSort(k); setDir(1); } };
+  const toggleSel = (r) => setSel((s) => s.find((x) => x.player_id === r.player_id)
+    ? s.filter((x) => x.player_id !== r.player_id)
+    : s.length >= 4 ? s : [...s, { player_id: r.player_id, name: r.player_name }]);
+  const cellOf = (v, f) => v == null ? "" : f === "pct" ? pct(v)
+    : f === "int" ? fmt(v, 0) : fmt(v, 1);
+  const visible = d ? d.columns.filter((c) => shown.includes(c.key)) : [];
+
   return h("div", null,
     h("header", { className: "page-head" },
       h("div", { className: "lhs" },
         h("div", { className: "eyebrow" }, "League"),
         h("h1", null, "Players"),
         h("p", { className: "lede" },
-          "Search any player who has appeared since 1946-47 using the box at "
-          + "the top. The current season's leading scorers are below as a way "
-          + "in.")),
-      d && d.rows && h("div", { className: "meta" },
-        h("span", null, h("b", null, d.season_label || d.season), "season"))),
-    d === false ? h("p", { className: "err" }, "failed to load players")
-    : !d ? h(Spinner, null)
-    : h("div", { className: "table-full scroll-x" },
-        h("table", { className: "data" },
-          h("thead", null, h("tr", null,
-            h("th", { className: "rank" }, "#"),
-            h("th", { className: "name" }, "Player"),
-            h("th", null, "Tm"), h("th", null, "G"), h("th", null, "MPG"),
-            h("th", { className: "on" }, "PPG"), h("th", null, "RPG"),
-            h("th", null, "APG"), h("th", null, "TS%"))),
-          h("tbody", null, (d.rows || []).map((r, i) =>
-            h("tr", { key: r.player_id, style: { cursor: "pointer" },
-                onClick: () => onOpenPlayer(r.player_id) },
-              h("td", { className: "rank" }, i + 1),
-              h("td", { className: "name" },
-                h("a", { href: "#", onClick: (e) => e.preventDefault() }, r.player_name)),
-              h("td", { className: "faint" }, r.team_id ?? "\u2014"),
-              h("td", null, r.games_played),
-              h("td", null, fmt(r.mpg)),
-              h("td", { className: "sorted-cell" }, fmt(r.ppg)),
-              h("td", null, fmt(r.rpg)), h("td", null, fmt(r.apg)),
-              h("td", null, pct(r.ts_pct))))))));
+          "Everyone who qualifies, with every column of one stat view. Sort by "
+          + "any column; select up to four players to compare them in place.")),
+      d && h("div", { className: "meta" },
+        h("span", null, h("b", null, fmt(rows.length, 0)), "shown"),
+        h("span", null, h("b", null, fmt(d.n, 0)), "qualified"))),
+
+    h("div", { className: "tabs", role: "tablist" }, PV_TABS.map(([k, lab]) =>
+      h("button", { key: k, role: "tab", "aria-selected": view === k,
+                    onClick: () => setView(k) }, lab))),
+
+    h("div", { className: "toolbar" },
+      h("div", { className: "grp", style: { flex: "1 1 180px" } },
+        h("input", { type: "search", value: q, style: { width: "100%" },
+          placeholder: "Filter by name…", "aria-label": "Filter by name",
+          onChange: (e) => setQ(e.target.value) })),
+      h("div", { className: "grp" },
+        h(SeasonPicker, { seasons, mode, setMode, season, setSeason,
+                          from, setFrom, to, setTo })),
+      h("div", { className: "grp" },
+        h("label", { htmlFor: "pv-team" }, "Team"),
+        h("select", { id: "pv-team", value: team,
+            onChange: (e) => setTeam(e.target.value) },
+          h("option", { value: "" }, "all"),
+          teams.map((b) => h("option", { key: b.abbrev, value: b.abbrev }, b.abbrev)))),
+      h("div", { className: "grp" },
+        h("label", { htmlFor: "pv-pos" }, "Pos"),
+        h("select", { id: "pv-pos", value: pos,
+            onChange: (e) => setPos(e.target.value) },
+          h("option", { value: "" }, "all"),
+          positions.map((x) => h("option", { key: x, value: x }, x)))),
+      h("div", { className: "grp" },
+        h("label", { htmlFor: "pv-min" }, "Min G"),
+        h("input", { id: "pv-min", type: "number", value: minG, style: { width: 54 },
+          onChange: (e) => setMinG(Number(e.target.value) || 0) })),
+      h("div", { className: "grp" }, h(GameTypePicker, { value: gt, onChange: setGt })),
+      h("div", { className: "spacer" }),
+      h("div", { className: "grp colpick" },
+        h("button", { className: "btn-ghost", "aria-expanded": pickOpen,
+            onClick: () => setPickOpen(!pickOpen) },
+          `Columns ${shown.length}/${allKeys.length}`),
+        pickOpen && d && h("div", { className: "colmenu" },
+          h("div", { className: "cm-presets" },
+            h("button", { className: "linkish", onClick: () => setCols(null) }, "All"),
+            h("button", { className: "linkish",
+              onClick: () => setCols(PV_CORE[view].filter((k) => allKeys.includes(k))) },
+              "Core")),
+          d.columns.map((c) =>
+            h("label", { key: c.key, className: "cm-row" },
+              h("input", { type: "checkbox", checked: shown.includes(c.key),
+                onChange: () => setCols((cur) => {
+                  const base = cur || allKeys;
+                  return base.includes(c.key)
+                    ? base.filter((x) => x !== c.key)
+                    : allKeys.filter((x) => base.includes(x) || x === c.key);
+                }) }),
+              h("span", null, c.label),
+              d.blanked.includes(c.key)
+                && h("span", { className: "cm-na" }, "n/a"))))) ),
+
+    sel.length > 0 && h("div", { className: "selbar no-print" },
+      h("span", null, h("b", null, sel.length), " selected"),
+      sel.map((x) => h("span", { key: x.player_id, className: "chip ghost" }, x.name)),
+      h("div", { className: "spacer" }),
+      h("button", { className: "btn", disabled: sel.length < 2,
+        onClick: () => setShowCmp(true) }, `Compare ${sel.length}`),
+      h("button", { className: "btn-ghost",
+        onClick: () => { setSel([]); setShowCmp(false); } }, "Clear")),
+
+    showCmp && sel.length >= 2 && h("div", { style: { marginBottom: "var(--s5)" } },
+      h(Comparison, { ids: sel.map((x) => x.player_id) })),
+
+    !d ? h(Spinner, { label: "reading the season…" })
+    : h("div", null,
+        h("div", { className: "table-full scroll-x pv-wrap" },
+          h("table", { className: "data sortable pv" },
+            h("thead", null, h("tr", null,
+              h("th", { className: "pick" }, ""),
+              h("th", { className: "name stick" }, "Player"),
+              h("th", null, "Tm"), h("th", null, "Pos"),
+              visible.map((c) =>
+                h("th", { key: c.key, onClick: by(c.key),
+                    style: { cursor: "pointer" },
+                    className: sort === c.key ? "sorted" : "" },
+                  c.label, sort === c.key ? (dir > 0 ? " ▾" : " ▴") : "")))),
+            h("tbody", null, rows.map((r) =>
+              h("tr", { key: r.player_id, style: teamStyle(r.brand || {}) },
+                h("td", { className: "pick" },
+                  h("input", { type: "checkbox",
+                    "aria-label": `Select ${r.player_name}`,
+                    checked: !!sel.find((x) => x.player_id === r.player_id),
+                    onChange: () => toggleSel(r) })),
+                h("td", { className: "name stick" },
+                  h("a", { href: "#", onClick: (e) => {
+                    e.preventDefault(); onOpenPlayer(r.player_id); } }, r.player_name)),
+                h("td", { className: "faint" },
+                  h("span", { className: "tm" },
+                    h("i", null), (r.brand || {}).abbrev || "—")),
+                h("td", { className: "faint" }, r.position || "—"),
+                visible.map((c) =>
+                  h("td", { key: c.key,
+                      className: (sort === c.key ? "sorted-cell " : "")
+                                 + (r[c.key] == null ? "na" : "") },
+                    cellOf(r[c.key], c.format)))))))),
+        d.blanked.length > 0 && h("p", { className: "era-note" },
+          h("b", null, "Blank, not zero. "),
+          [...new Set(d.blanked.map((k) => d.blanked_why[k]))].join("; "), ".")));
 }
 
 // Entry state for "Players & teams". The section has real pages behind it, but

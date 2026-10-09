@@ -598,6 +598,184 @@ def explore_seasons(game_type: str = "regular") -> dict:
             "latest": rows[0]["season"] if rows else None}
 
 
+# =============================================================================
+# The Players directory: everyone, with every stat view.
+# =============================================================================
+# Five views over one season (or a range). Columns per view, as
+# (key, label, format). `format` is read by the client only.
+PLAYER_VIEWS = {
+    "totals": [("games_played", "G", "int"), ("minutes", "MIN", "int"),
+               ("pts", "PTS", "int"), ("reb", "REB", "int"), ("ast", "AST", "int"),
+               ("stl", "STL", "int"), ("blk", "BLK", "int"),
+               ("turnover", "TOV", "int"), ("pf", "PF", "int"),
+               ("fgm", "FGM", "int"), ("fga", "FGA", "int"),
+               ("fg3m", "3PM", "int"), ("fg3a", "3PA", "int"),
+               ("ftm", "FTM", "int"), ("fta", "FTA", "int"),
+               ("oreb", "OREB", "int"), ("dreb", "DREB", "int")],
+    "per_game": [("games_played", "G", "int"), ("mpg", "MPG", "num"),
+                 ("ppg", "PTS", "num"), ("rpg", "REB", "num"), ("apg", "AST", "num"),
+                 ("spg", "STL", "num"), ("bpg", "BLK", "num"),
+                 ("fg3mpg", "3PM", "num"), ("topg", "TOV", "num")],
+    "per36": [("games_played", "G", "int"), ("mpg", "MPG", "num"),
+              ("pts_per36", "PTS", "num"), ("reb_per36", "REB", "num"),
+              ("ast_per36", "AST", "num"), ("stl_per36", "STL", "num"),
+              ("blk_per36", "BLK", "num"), ("fg3m_per36", "3PM", "num"),
+              ("turnover_per36", "TOV", "num")],
+    "shooting": [("games_played", "G", "int"), ("fgm", "FGM", "int"),
+                 ("fga", "FGA", "int"), ("fg_pct", "FG%", "pct"),
+                 ("fg3m", "3PM", "int"), ("fg3a", "3PA", "int"),
+                 ("fg3_pct", "3P%", "pct"), ("ftm", "FTM", "int"),
+                 ("fta", "FTA", "int"), ("ft_pct", "FT%", "pct"),
+                 ("ts_pct", "TS%", "pct"), ("efg_pct", "eFG%", "pct")],
+    "advanced": [("games_played", "G", "int"), ("usage_pct", "USG%", "num"),
+                 ("ts_pct_adv", "TS%", "num"), ("efg_pct_adv", "eFG%", "num"),
+                 ("off_rating", "ORTG", "num"), ("def_rating", "DRTG", "num"),
+                 ("net_rating", "NET", "num"), ("pie", "PIE", "num"),
+                 ("pace", "PACE", "num"), ("ast_pct", "AST%", "num"),
+                 ("reb_pct", "REB%", "num"), ("tov_ratio", "TOV%", "num")],
+}
+
+# Which raw stat each displayed column depends on, so a column can be BLANKED
+# in an era that did not record it rather than rendered as a zero. The source
+# of truth is v_stat_first_tracked -- the same table the catalog and the
+# coverage endpoint read -- not a cutoff written here.
+PLAYER_COL_BASE = {
+    "minutes": "minutes", "mpg": "minutes",
+    "stl": "stl", "spg": "stl", "stl_per36": "stl",
+    "blk": "blk", "bpg": "blk", "blk_per36": "blk",
+    "turnover": "turnover", "topg": "turnover", "turnover_per36": "turnover",
+    "fg3m": "fg3m", "fg3a": "fg3a", "fg3mpg": "fg3m", "fg3m_per36": "fg3m",
+    "fg3_pct": "fg3a", "oreb": "oreb", "dreb": "dreb",
+    "reb": "reb", "rpg": "reb", "reb_per36": "reb",
+    "ast": "ast", "apg": "ast", "ast_per36": "ast",
+    "pf": "pf", "ts_pct": "fga", "efg_pct": "fga", "fg_pct": "fga",
+    "ft_pct": "fta",
+}
+# minutes_played is stored as 0 rather than NULL before it was recorded, so it
+# is not in v_stat_first_tracked's null-based reckoning. 1975 is the season the
+# project's own CoverageTool derives once a stored zero is read as "missing" --
+# see the Phase 8c audit. Advanced metrics simply do not exist before 1996-97.
+MINUTES_RELIABLE_FROM = 1975
+ADVANCED_FROM = 1996
+
+
+@app.get("/api/players")
+def players_directory(view: str = "per_game", season: int | None = None,
+                      season_from: int | None = None, season_to: int | None = None,
+                      min_games: int = 1, game_type: str = "regular",
+                      limit: int = 900) -> dict:
+    """Everyone who qualifies, with every column of one stat view.
+
+    A DIRECTORY, not a ranking: no stat decides who is in it, the client sorts
+    by any column, and `limit` is a safety rail rather than a top-N. That is
+    what separates this from /api/explore/leaderboard, which picks a stat and
+    returns its top N.
+
+    Columns the era cannot support come back as null and are listed in
+    `blanked`, so the page can show a gap with a footnote instead of a zero.
+    """
+    gt = _game_type(game_type)
+    if view not in PLAYER_VIEWS:
+        raise HTTPException(400, f"view must be one of {sorted(PLAYER_VIEWS)}")
+    latest = _rows("SELECT MAX(season) AS s FROM v_games WHERE game_type = ?", [gt])
+    latest = latest[0]["s"] if latest else None
+    if season_from is None and season_to is None:
+        season_from = season_to = season if season is not None else latest
+    else:
+        season_from = season_from if season_from is not None else latest
+        season_to = season_to if season_to is not None else latest
+    if season_from > season_to:
+        season_from, season_to = season_to, season_from
+    limit = max(1, min(limit, 2000))
+
+    cols = PLAYER_VIEWS[view]
+    keys = [c for c, _l, _f in cols]
+
+    if view == "advanced":
+        adv_cols = ", ".join(
+            f'SUM(s."{MODEL_ADVANCED[k][0]}" * g.minutes_played) '
+            f'/ NULLIF(SUM(CASE WHEN s."{MODEL_ADVANCED[k][0]}" IS NULL THEN 0 '
+            f'ELSE g.minutes_played END), 0) AS "{k}"'
+            for k in keys if k in MODEL_ADVANCED)
+        rows = _rows(
+            f"""SELECT g.player_id, ANY_VALUE(g.player_name) AS player_name,
+                       ANY_VALUE(g.team_id) AS team_id,
+                       COUNT(*) AS games_played, {adv_cols}
+                FROM v_player_games g
+                JOIN player_advanced_stats s
+                  ON s.player_id = g.player_id AND s.game_id = g.game_id
+                WHERE g.game_type = ? AND NOT g.is_dnp
+                  AND g.season BETWEEN ? AND ?
+                GROUP BY g.player_id
+                HAVING COUNT(*) >= ?
+                ORDER BY g.player_id
+                LIMIT ?""",
+            [gt, season_from, season_to, min_games, limit])
+    elif view == "totals":
+        sums = ", ".join(f'SUM("{k}") AS "{k}"' for k in keys)
+        rows = _rows(
+            f"""SELECT player_id, ANY_VALUE(player_name) AS player_name,
+                       ANY_VALUE(team_id) AS team_id, {sums}
+                FROM v_player_season_totals
+                WHERE game_type = ? AND season BETWEEN ? AND ?
+                GROUP BY player_id
+                HAVING SUM(games_played) >= ?
+                ORDER BY player_id
+                LIMIT ?""", [gt, season_from, season_to, min_games, limit])
+    else:
+        # Rates: recomputed from summed totals across a range, never averaged
+        # across seasons -- the rule the leaderboard already follows.
+        expr = ", ".join(f'{RANGE_RATES[k]} AS "{k}"' for k in keys
+                         if k in RANGE_RATES and k != "games_played")
+        rows = _rows(
+            f"""SELECT player_id, ANY_VALUE(player_name) AS player_name,
+                       ANY_VALUE(team_id) AS team_id,
+                       SUM(games_played) AS games_played, {expr}
+                FROM v_player_season_totals
+                WHERE game_type = ? AND season BETWEEN ? AND ?
+                GROUP BY player_id
+                HAVING SUM(games_played) >= ?
+                ORDER BY player_id
+                LIMIT ?""", [gt, season_from, season_to, min_games, limit])
+
+    # Position and the franchise brand, so the page can filter and colour.
+    meta = {r["player_id"]: r for r in _rows(
+        "SELECT player_id, position FROM v_players")}
+    for r in rows:
+        m = meta.get(r["player_id"]) or {}
+        r["position"] = (m.get("position") or "").strip() or None
+        r["brand"] = team_brand.brand_for(r.get("team_id"))
+
+    # Which columns this era cannot support. Read from v_stat_first_tracked,
+    # never from a number typed here -- except minutes and advanced, which are
+    # explained above.
+    first_full = {r["stat"]: r["first_full_season"]
+                  for r in _rows("SELECT stat, first_full_season FROM v_stat_first_tracked")}
+    blanked, why = [], {}
+    for k in keys:
+        base = PLAYER_COL_BASE.get(k)
+        if view == "advanced" and season_from < ADVANCED_FROM:
+            blanked.append(k)
+            why[k] = f"advanced metrics begin in {ADVANCED_FROM}-97"
+        elif base == "minutes" and season_from < MINUTES_RELIABLE_FROM:
+            blanked.append(k)
+            why[k] = f"minutes are not reliably recorded before {MINUTES_RELIABLE_FROM}-76"
+        elif base and base in first_full and season_from < first_full[base]:
+            blanked.append(k)
+            why[k] = f"{base} is not reliably recorded before {first_full[base]}"
+    for r in rows:
+        for k in blanked:
+            r[k] = None
+
+    return {"view": view, "columns": [{"key": k, "label": l, "format": f}
+                                      for k, l, f in cols],
+            "season_from": season_from, "season_to": season_to,
+            "is_range": season_from != season_to,
+            "game_type": gt, "min_games": min_games,
+            "rows": rows, "n": len(rows), "limit": limit,
+            "blanked": blanked, "blanked_why": why}
+
+
 @app.get("/api/home")
 def home_panel(games: int = 8) -> dict:
     """What the Overview needs, in one round trip.

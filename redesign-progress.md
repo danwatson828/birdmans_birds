@@ -27,7 +27,7 @@ alone.**
 | 0 | Shared table-header bug + standing check | **done** (accepted, do not redo) |
 | 1 | Overview rework | **done** |
 | 2 | Teams | **done** |
-| 3 | Players directory (comparison lives inside) | not started |
+| 3 | Players directory (comparison lives inside) | **done** |
 | 4 | Leaderboards (top-N cards) | not started |
 | 5 | League evolution (explorable) | not started |
 | 6 | Knowledge base equal-height cards | not started |
@@ -136,6 +136,34 @@ Now computed per element by `textSafe()` in `lib.js` (multiplicative lightness
 steps, memoised). Verified in the live page: POR `#e03a3e` -> `#de3034`, and a
 no-op for BOS/LAL/ATL/NYK. The teams list went from 1 distinct edge colour to
 22.
+
+## Item 3 — Players directory (done)
+
+New read-only **`/api/players`** with five views: `per_game`, `totals`,
+`per36`, `shooting`, `advanced`. A DIRECTORY, not a ranking -- nothing picks
+who is in it except the filters, and `limit` (capped 2000) is a safety rail
+rather than a top-N. That is the structural difference from
+`/api/explore/leaderboard`, which picks a stat and returns its top N.
+
+- Advanced is the **minutes-weighted** aggregate of `player_advanced_stats`,
+  reusing the exact expression the model builder already uses (denominator
+  counts only minutes from games where the metric is present).
+- Rates over a range are recomputed from summed totals via `RANGE_RATES`,
+  never averaged across seasons -- the rule the leaderboard already follows.
+- **Era blanking reuses `v_stat_first_tracked`**, not numbers typed here. The
+  two exceptions are documented in the endpoint: minutes (stored as 0, not
+  NULL, so the null-based table cannot see it -- 1975 comes from the project's
+  own CoverageTool audit) and advanced (simply absent before 1996-97).
+  Blanked columns return `null` plus a `blanked_why` reason; the page renders
+  a hatched gap and a footnote, never a zero. Verified at 1960: mpg/rpg/apg/
+  spg/bpg/fg3mpg/topg all null with reasons.
+
+UI: five view tabs, every column sortable (blanks always sort last, in either
+direction -- absent is not "worst"), name/team/position filters, min-games,
+season single-or-range, a column picker with All/Core presets, and a sticky
+first column. Select up to four players and the existing `Comparison`
+component renders in place; `compare.js` now exports it, which also makes
+item 10 a deletion rather than a rewrite.
 
 ## Baseline to beat
 
