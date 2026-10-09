@@ -74,7 +74,11 @@ export function KnowledgeBase({ onOpenAnalysis, initialTab }) {
   // the question and the takeaway; opening one expands its notes in place.
   const card = (a) => h("div", { key: a.id,
       className: "kcard" + (open === a.id ? " open" : "") },
-    h("button", { className: "q", style: { all: "unset", cursor: "pointer" },
+    // NOT `all: unset` -- that wipes the .kcard .q clamp along with the button
+    // chrome, so these questions grew unbounded and their footers fell out of
+    // line with the cards beside them. The button chrome is reset in CSS
+    // (.kcard .q) where the clamp can survive it.
+    h("button", { className: "q",
         onClick: () => onOpenAnalysis(a.id) }, a.question),
     a.snippet && h("span", { className: "a" },
       a.snippet.replace(/[#*`]/g, "").slice(0, 190)),

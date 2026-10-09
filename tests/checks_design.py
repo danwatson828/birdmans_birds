@@ -241,6 +241,103 @@ def table_headers_sit_above_their_first_row(con_unused):
 
 
 # ---------------------------------------------------------------------------
+# 1c. Card grids
+# ---------------------------------------------------------------------------
+@check("cards in a row have equal heights", group="design")
+def cards_in_a_row_have_equal_heights(con_unused):
+    """A card grid with ragged cards reads as broken layout.
+
+    Checks TWO things, because the obvious one cannot fail on its own: CSS
+    grid's default `align-items: stretch` already makes every box in a row the
+    same height, so measuring box heights alone would pass even with wildly
+    uneven content. The thing that actually looks ragged is the FOOTER -- the
+    tag row -- sitting at a different height in each card.
+
+    So: equal box heights (cheap, worth holding), AND footers aligned within a
+    row. The footer alignment is what the clamping and `margin-top: auto`
+    actually buy, and removing either breaks this check.
+
+    Rows are derived from each card's measured `top`, not from a column count,
+    because the grid is `auto-fill` and how many fit depends on the viewport.
+    """
+    from .cdp import Browser, Server, find_chrome
+    chrome = find_chrome()
+    if not chrome:
+        raise Skip("no Chrome/Chromium found (set CHROME_BIN to run this)")
+    try:
+        import fastapi, uvicorn            # noqa: F401
+    except Exception as exc:
+        raise Skip(f"the web app's deps are unavailable: {exc}")
+
+    PROBE = """(() => {
+      const out = [];
+      document.querySelectorAll('.cardgrid, .boards').forEach((grid, gi) => {
+        const kids = [...grid.children].filter(c => c.getBoundingClientRect().height > 0);
+        if (kids.length < 2) return;
+        const rows = new Map();
+        for (const c of kids) {
+          const r = c.getBoundingClientRect();
+          const key = Math.round(r.top);            // same top == same row
+          if (!rows.has(key)) rows.set(key, []);
+          const foot = c.querySelector('.foot, .b-qual');
+          // The footer's BOTTOM, not its top: a tag row wraps to two lines on
+          // a card with more tags, so its top legitimately sits higher while
+          // the card still ends flush with its neighbours. Bottom alignment is
+          // what `margin-top: auto` buys and what actually reads as tidy.
+          rows.get(key).push({
+            h: Math.round(r.height),
+            foot: foot ? Math.round(foot.getBoundingClientRect().bottom) : null });
+        }
+        for (const [top, cards] of rows) {
+          if (cards.length < 2) continue;           // a lone card cannot be ragged
+          const hs = cards.map(c => c.h);
+          const fs = cards.map(c => c.foot).filter(v => v != null);
+          out.push({ grid: gi, cls: String(grid.className).split(' ')[0],
+                     top, n: cards.length,
+                     spread: Math.max(...hs) - Math.min(...hs), hs,
+                     footSpread: fs.length === cards.length && fs.length > 1
+                                 ? Math.max(...fs) - Math.min(...fs) : null });
+        }
+      });
+      return out;
+    })()"""
+
+    pages = _pages()
+    server = browser = None
+    try:
+        try:
+            server = Server(PROJECT_ROOT)
+        except Exception as exc:
+            raise Skip(f"could not start the app: {exc}")
+        browser = Browser(chrome)
+        session = browser.new_page(1340, 950)
+        bad, rows_seen = [], 0
+        for label, query in pages:
+            browser.goto(session, f"{server.base}/{query}", settle=3.0)
+            for r in browser.eval(session, PROBE):
+                rows_seen += 1
+                if r["spread"] > 2:                 # 2px for sub-pixel rounding
+                    bad.append(f"{label} .{r['cls']} row at y={r['top']}: "
+                               f"{r['n']} card HEIGHTS differ by {r['spread']}px "
+                               f"({min(r['hs'])}..{max(r['hs'])})")
+                elif r["footSpread"] is not None and r["footSpread"] > 2:
+                    bad.append(f"{label} .{r['cls']} row at y={r['top']}: "
+                               f"{r['n']} card FOOTERS differ by "
+                               f"{r['footSpread']}px at the BOTTOM -- the tag rows do not sit on a common baseline")
+        if not rows_seen:
+            raise Skip("no multi-card rows rendered on any page")
+        if bad:
+            return False, "; ".join(bad[:4]) + (f"; +{len(bad)-4} more" if len(bad) > 4 else "")
+        return True, (f"{rows_seen} multi-card rows across {len(pages)} page "
+                      f"types: equal heights and aligned footers")
+    finally:
+        if browser:
+            browser.stop()
+        if server:
+            server.stop()
+
+
+# ---------------------------------------------------------------------------
 # 2. Text contrast
 # ---------------------------------------------------------------------------
 HEX = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")

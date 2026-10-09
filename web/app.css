@@ -447,11 +447,25 @@ code, pre { font-family: var(--mono); }
          border-left: 3px solid var(--accent); border-radius: var(--r2);
          padding: var(--s3) var(--s4); text-align: left; cursor: pointer;
          font: inherit; color: inherit; }
-.kcard:hover { background: var(--sunken); border-left-color: var(--accent-2); }
+.kcard:hover { background: var(--sunken); border-left-color: var(--sec); }
 .kcard.ok   { border-left-color: var(--win); }
 .kcard.bad  { border-left-color: var(--loss); }
 .kcard.warn { border-left-color: var(--warn); }
-.kcard .q { font: 600 var(--t-md)/1.35 var(--sans); color: var(--ink); }
+/* EQUAL HEIGHTS, structurally rather than by hoping the text is similar.
+   The grid already stretches every item to the tallest in its row; what broke
+   it was unbounded text, so BOTH variable runs are clamped and the footer is
+   pinned to the bottom (margin-top:auto, below) so tags line up across a row.
+   One saved analysis opens with 600 words of hypothesis as its "question",
+   which is what set the row height before.
+   Held by tests/checks_design.py::cards_in_a_row_have_equal_heights. */
+.kcard { min-height: 138px; }
+/* Works as a <span> on the Overview and a <button> on the knowledge base, so
+   the button chrome is reset HERE rather than by an inline `all: unset` that
+   would also wipe the clamp. */
+.kcard .q { font: 600 var(--t-md)/1.35 var(--sans); color: var(--ink);
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden; background: none; border: 0; padding: 0;
+            text-align: left; cursor: pointer; width: 100%; }
 .kcard .a { font: 400 var(--t-sm)/1.45 var(--sans); color: var(--muted);
             display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
             overflow: hidden; }
@@ -846,7 +860,11 @@ textarea { font: var(--t-md)/1.5 var(--sans); padding: 10px 12px; border-radius:
 table.data { border-collapse: collapse; width: 100%;
              font: 400 var(--t-sm)/1.25 var(--mono);
              font-variant-numeric: tabular-nums; }
-table.data th, table.data td { padding: 0 var(--s2); height: var(--row);
+/* Padding lives on the SHARED cell rule, never per table: the catalog's
+   "when each stat starts" columns were touching because that one table set
+   its own. --s3 horizontal is the floor for a numeric column to read as a
+   column rather than a run of digits. */
+table.data th, table.data td { padding: 0 var(--s3); height: var(--row);
                                border-bottom: 1px solid var(--rule-2);
                                text-align: right; white-space: nowrap; }
 table.data th:first-child, table.data td:first-child { text-align: left; }

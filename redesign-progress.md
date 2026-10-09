@@ -30,8 +30,8 @@ alone.**
 | 3 | Players directory (comparison lives inside) | **done** |
 | 4 | Leaderboards (top-N cards) | **done** |
 | 5 | League evolution (explorable) | **done** |
-| 6 | Knowledge base equal-height cards | not started |
-| 7 | Catalog padding | not started |
+| 6 | Knowledge base equal-height cards | **done** |
+| 7 | Catalog padding | **done** |
 | 8 | This week dashboard grid | not started |
 | 9 | Keeper and Draft | not started |
 | 10 | Trade analyzer only | not started |
@@ -208,6 +208,37 @@ grammar than as paths.
 Bug caught in review: promoting a tile could set the main metric to whatever
 was already overlaid ("X, with X overlaid"). Picking the overlay as the main
 now clears it.
+
+## Items 6 and 7 — card heights, catalog padding (done)
+
+**7** is one line: horizontal cell padding went `--s2` -> `--s3` on the SHARED
+`table.data th, td` rule. The catalog's columns were touching because that one
+table had been given its own padding; putting it on the shared rule means no
+table can miss it.
+
+**6**: both variable runs in a card are clamped (question to 2 lines, snippet
+to 3) and the footer is pinned with `margin-top: auto`.
+
+### The check took three attempts, and the first two passed on broken CSS
+
+1. Measured **box heights**. Could never fail -- grid's default
+   `align-items: stretch` already equalises every box in a row.
+2. Measured **footer tops**. Wrong in the other direction: a card with more
+   tags wraps its tag row to two lines, so its footer legitimately starts
+   higher while the card still ends flush.
+3. Measures **footer bottoms** -- a common baseline, which is what
+   `margin-top: auto` actually buys. PASS on the fix, FAIL (17-38px) with
+   `margin-top: auto` removed.
+
+Attempt 2 also surfaced a real miss: `kb.js` set `style={{all: "unset"}}` on
+the question button, which wiped the `.kcard .q` clamp along with the button
+chrome, so only the Overview cards were ever clamped. The button chrome is now
+reset in CSS where the clamp survives it.
+
+**Standing lesson for this branch:** three checks so far have needed the
+ASSERTION corrected rather than the code. Each time the error was the same --
+asserting something adjacent to the defect instead of the defect itself. Prove
+a new check fails on the broken state before trusting a pass.
 
 ## Baseline to beat
 
