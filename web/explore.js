@@ -480,8 +480,71 @@ const COVERAGE_BASE = { ts_pct: "fga", efg_pct: "fga", fg_pct: "fga", ft_pct: "f
   fg3mpg: "fg3m", spg: "stl", bpg: "blk", topg: "turnover",
   mpg: "minutes_played" };
 
-function Leaderboard({ onOpenPlayer }) {
-  const [stat, setStat] = useState("ppg");
+// The leaders BOARD: many short rankings, each stating its qualifier.
+//
+// Leaderboards and Players kept arriving as the same page. They have different
+// jobs and now have different shapes: Players is one wide table of everyone,
+// this is a grid of top-ten cards you scan, and clicking one opens the deep
+// ranking for that single stat.
+function LeadersBoard({ onOpenPlayer, onOpenStat }) {
+  const [d, setD] = useState(null);
+  const [gt, setGt] = useState("regular");
+  const [season, setSeason] = useState(null);
+  const seasons = useSeasons(gt);
+  useEffect(() => {
+    setD(null);
+    const p = new URLSearchParams({ game_type: gt });
+    if (season) p.set("season", season);
+    api(`/api/leaders?${p}`).then(setD).catch(() => setD(false));
+  }, [gt, season]);
+  if (d === false) return h("p", { className: "err" }, "failed to load leaders");
+
+  return h("div", null,
+    h("header", { className: "page-head" },
+      h("div", { className: "lhs" },
+        h("div", { className: "eyebrow" }, "League"),
+        h("h1", null, "Leaderboards"),
+        h("p", { className: "lede" },
+          "Who leads each stat, and on what terms. Every board states the "
+          + "qualifier it used \u2014 games for a counting stat, attempts for a "
+          + "percentage. Open one for the full ranking.")),
+      d && h("div", { className: "meta" },
+        h("span", null, h("b", null, d.boards.length), "boards"),
+        h("span", null, h("b", null, d.season_label || "\u2014"), "season"))),
+
+    h("div", { className: "toolbar" },
+      h("div", { className: "grp" },
+        h(SeasonPicker, { seasons, mode: "single", setMode: () => {},
+                          season, setSeason, allowRange: false })),
+      h("div", { className: "grp" }, h(GameTypePicker, { value: gt, onChange: setGt })),
+      h("div", { className: "spacer" }),
+      h("div", { className: "count" }, "top 10 per stat")),
+
+    !d ? h(Spinner, { label: "ranking the league\u2026" })
+    : h("div", { className: "boards" }, d.boards.map((b) =>
+        h("section", { key: b.stat, className: "board" },
+          h("button", { className: "b-head", onClick: () => onOpenStat(b.stat),
+              title: `Open the full ${b.title} ranking` },
+            h("span", { className: "b-title" }, b.title),
+            h("span", { className: "b-unit" }, b.unit),
+            h("span", { className: "b-open" }, "Full ranking \u2192")),
+          h("ol", { className: "b-list" }, b.rows.map((r, i) =>
+            h("li", { key: r.player_id, style: teamStyle(r.brand || {}) },
+              h("span", { className: "r" }, i + 1),
+              h("span", { className: "e" }),
+              h("button", { className: "n",
+                onClick: () => onOpenPlayer(r.player_id) }, r.player_name),
+              h("span", { className: "tm" }, (r.brand || {}).abbrev || ""),
+              h("span", { className: "v" },
+                b.format === "pct" ? pct(r.value) : fmt(r.value, 1))))),
+          h("p", { className: "b-qual" }, b.qualifier)))));
+}
+
+// The deep ranking for ONE stat, opened from a board card. Career mode is a
+// range across the whole span, which is what the server already aggregates
+// correctly (rates recomputed from summed totals, never averaged).
+function Leaderboard({ onOpenPlayer, initialStat, onBack }) {
+  const [stat, setStat] = useState(initialStat || "ppg");
   // A real range, not a UI convenience: the server recomputes rates from summed
   // totals across the span, because averaging season averages weights a 12-game
   // season the same as an 82-game one and silently returns a different board.
@@ -508,6 +571,9 @@ function Leaderboard({ onOpenPlayer }) {
   }, [stat, season, range, from, to, minG, gt]);
   const base = COVERAGE_BASE[stat];
   return h("div", null,
+    onBack && h("div", { className: "no-print", style: { marginBottom: "var(--s3)" } },
+      h("button", { className: "btn-ghost", onClick: onBack },
+        "\u2190 All leaderboards")),
     h("header", { className: "page-head" },
       h("div", { className: "lhs" },
         h("div", { className: "eyebrow" }, "League ranking"),
@@ -853,7 +919,10 @@ export function Explorer({ section }) {
       onOpenGame: (gid, season) => setView({ kind: "game", id: gid,
                                              teamId: view.id, season }) }),
     view.kind === "search" && h(PlayersLanding, { onOpenPlayer: openPlayer }),
-    view.kind === "leaderboard" && h(Leaderboard, { onOpenPlayer: openPlayer }),
+    view.kind === "leaderboard" && h(LeadersBoard, { onOpenPlayer: openPlayer,
+      onOpenStat: (stat) => setView({ kind: "ranking", stat }) }),
+    view.kind === "ranking" && h(Leaderboard, { onOpenPlayer: openPlayer,
+      initialStat: view.stat, onBack: () => setView({ kind: "leaderboard" }) }),
     view.kind === "catalog" && h(Catalog, null),
     view.kind === "teams" && h(SearchLanding, { onOpenPlayer: openPlayer,
                                                 onOpenTeam: openTeam }),

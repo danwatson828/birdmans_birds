@@ -659,6 +659,84 @@ MINUTES_RELIABLE_FROM = 1975
 ADVANCED_FROM = 1996
 
 
+# A leaders BOARD: many short rankings, each with the qualifier that makes it
+# honest. Counting stats qualify on games; percentages qualify on ATTEMPTS,
+# because a 100% three-point season off two attempts is not a leader.
+LEADER_BOARDS = [
+    ("ppg",     "Points",          "per game",   "games",  41),
+    ("rpg",     "Rebounds",        "per game",   "games",  41),
+    ("apg",     "Assists",         "per game",   "games",  41),
+    ("spg",     "Steals",          "per game",   "games",  41),
+    ("bpg",     "Blocks",          "per game",   "games",  41),
+    ("fg3mpg",  "Threes made",     "per game",   "games",  41),
+    ("mpg",     "Minutes",         "per game",   "games",  41),
+    ("fg_pct",  "Field goal %",    "season",     "fga",   300),
+    ("fg3_pct", "Three-point %",   "season",     "fg3a",  100),
+    ("ft_pct",  "Free throw %",    "season",     "fta",   100),
+    ("ts_pct",  "True shooting %", "season",     "fga",   300),
+    ("efg_pct", "Effective FG%",   "season",     "fga",   300),
+]
+# attempt column -> the totals column it lives in
+LEADER_ATTEMPT_COL = {"fga": "fga", "fg3a": "fg3a", "fta": "fta"}
+
+
+@app.get("/api/leaders")
+def leaders_board(season: int | None = None, game_type: str = "regular",
+                  top: int = 10) -> dict:
+    """Top-N for every headline stat, each stating the qualifier it used.
+
+    Distinct from /api/players (a directory of everyone) and from
+    /api/explore/leaderboard (ONE stat, deep). This is the board: many short
+    rankings, shallow, for scanning.
+    """
+    gt = _game_type(game_type)
+    top = max(3, min(top, 25))
+    latest = _rows("SELECT MAX(season) AS s FROM v_games WHERE game_type = ?", [gt])
+    season = season if season is not None else (latest[0]["s"] if latest else None)
+
+    boards = []
+    for stat, title, unit, qual_kind, qual_min in LEADER_BOARDS:
+        col, _label = LEADERBOARD_STATS[stat]
+        desc = "ASC" if stat in LOWER_IS_BETTER else "DESC"
+        if qual_kind == "games":
+            where, args = "a.games_played >= ?", [season, gt, qual_min, top]
+            having = ""
+            sql = f"""SELECT a.player_id, a.player_name, a.team_id,
+                             a.games_played, a.{col} AS value
+                      FROM v_player_season_averages a
+                      WHERE a.season = ? AND a.game_type = ? AND {where}
+                        AND a.{col} IS NOT NULL
+                      ORDER BY value {desc}, a.player_id
+                      LIMIT ?"""
+        else:
+            acol = LEADER_ATTEMPT_COL[qual_kind]
+            sql = f"""SELECT a.player_id, a.player_name, a.team_id,
+                             a.games_played, a.{col} AS value, t.{acol} AS attempts
+                      FROM v_player_season_averages a
+                      JOIN (SELECT player_id, SUM({acol}) AS {acol}
+                            FROM v_player_season_totals
+                            WHERE season = ? AND game_type = ?
+                            GROUP BY player_id) t USING (player_id)
+                      WHERE a.season = ? AND a.game_type = ? AND t.{acol} >= ?
+                        AND a.{col} IS NOT NULL
+                      ORDER BY value {desc}, a.player_id
+                      LIMIT ?"""
+            args = [season, gt, season, gt, qual_min, top]
+        rows = _rows(sql, args)
+        for r in rows:
+            r["brand"] = team_brand.brand_for(r.get("team_id"))
+        boards.append({
+            "stat": stat, "title": title, "unit": unit,
+            "qualifier": (f"minimum {qual_min} games" if qual_kind == "games"
+                          else f"minimum {qual_min} {qual_kind.upper()}"),
+            "format": "pct" if stat.endswith("_pct") else "num",
+            "rows": rows})
+
+    return {"season": season, "game_type": gt, "top": top,
+            "season_label": f"{season}\u2013{str(season + 1)[2:]}" if season else None,
+            "boards": boards}
+
+
 @app.get("/api/players")
 def players_directory(view: str = "per_game", season: int | None = None,
                       season_from: int | None = None, season_to: int | None = None,

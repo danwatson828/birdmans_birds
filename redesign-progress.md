@@ -28,7 +28,7 @@ alone.**
 | 1 | Overview rework | **done** |
 | 2 | Teams | **done** |
 | 3 | Players directory (comparison lives inside) | **done** |
-| 4 | Leaderboards (top-N cards) | not started |
+| 4 | Leaderboards (top-N cards) | **done** |
 | 5 | League evolution (explorable) | not started |
 | 6 | Knowledge base equal-height cards | not started |
 | 7 | Catalog padding | not started |
@@ -164,6 +164,24 @@ season single-or-range, a column picker with All/Core presets, and a sticky
 first column. Select up to four players and the existing `Comparison`
 component renders in place; `compare.js` now exports it, which also makes
 item 10 a deletion rather than a rewrite.
+
+## Item 4 — Leaderboards (done)
+
+New read-only **`/api/leaders`**: twelve top-10 boards in one call, each
+carrying the qualifier that makes it honest. Counting stats qualify on games
+(41); percentages qualify on **attempts** -- 300 FGA, 100 FG3A, 100 FTA --
+because a 100% three-point season off two attempts is not a leader. Verified:
+the FG% leader has 310 attempts.
+
+The page is a grid of cards with team colour edges, not a table. Clicking a
+card opens the existing deep `Leaderboard` for that one stat (now taking
+`initialStat` and `onBack`), which already supports single season, range and
+a game-type toggle; career is the range across the whole span, where the
+server recomputes rates from summed totals.
+
+**Players vs Leaderboards is now structural, not cosmetic:** Players is one
+wide table of everyone that the client sorts; Leaderboards is many short
+rankings you scan, each stating its terms.
 
 ## Baseline to beat
 
