@@ -277,8 +277,13 @@ function Trade({ a, b }) {
                 side_b: { team: "Them", player_ids: b.map((p) => p.player_id) } } })));
 }
 
+// Item 10: this destination is the TRADE ANALYZER and nothing else.
+//
+// Player comparison moved into the Players directory, where you already have
+// everyone in front of you -- having it here meant finding the same two
+// players a second time. `Comparison` is still exported above, and Players is
+// what renders it now.
 export function CompareView() {
-  const [tab, setTab] = useState("compare");
   const [a, setA] = useState([]);
   const [b, setB] = useState([]);
   const [rosters, setRosters] = useState(null);
@@ -286,59 +291,39 @@ export function CompareView() {
     api("/api/fantasy/rosters").then(setRosters)
       .catch((e) => setRosters({ error: String(e) }));
   }, []);
-  const addA = (p) => setA((x) => x.find((y) => y.player_id === p.player_id)
-    ? x : [...x, p].slice(0, 4));
-  const addB = (p) => setB((x) => x.find((y) => y.player_id === p.player_id)
-    ? x : [...x, p].slice(0, 4));
   return h("div", null,
     h("header", { className: "page-head" },
-      h("div", { className: "eyebrow" }, "Compare"),
-      h("h2", null, tab === "compare" ? "Players side by side" : "Trade analyzer"),
-      h("p", { className: "lede" }, tab === "compare"
-        ? "Career rates, best season and next-season projection for two to "
-          + "four players, from the same queries their own pages use."
-        : "An N-for-M trade valued with the draft board's own category "
+      h("div", { className: "lhs" },
+        h("div", { className: "eyebrow" }, "Fantasy"),
+        h("h1", null, "Trade analyzer"),
+        h("p", { className: "lede" },
+          "An N-for-M trade valued with the draft board's own category "
           + "z-scores, so a player cannot be worth one thing there and "
-          + "another here.")),
-    h("div", { className: "controls no-print" },
-      h("label", { className: "field" }, "View",
-        h("select", { value: tab, onChange: (e) => setTab(e.target.value) },
-          h("option", { value: "compare" }, "player comparison"),
-          h("option", { value: "trade" }, "trade analyzer")))),
-    tab === "compare"
-      ? h("div", null,
+          + "another here. To compare players side by side, use Players.")),
+      h("div", { className: "meta" },
+        h("span", null, h("b", null, a.length + b.length), "in the trade"))),
+    !rosters ? h(Spinner, { label: "reading the league\u2026" })
+    : rosters.error
+      ? h("p", { className: "err" },
+          "Rosters unavailable: ", rosters.error,
+          " \u2014 run `python league_sync.py` to cache all twelve.")
+      : h("div", null,
           h("div", { className: "grid two" },
-            h(PlayerSearch, { label: "Player A", onPick: addA, chosen: a,
-              onDrop: (p) => setA((x) =>
-                x.filter((y) => y.player_id !== p.player_id)) }),
-            h(PlayerSearch, { label: "Player B", onPick: addB, chosen: b,
-              onDrop: (p) => setB((x) =>
-                x.filter((y) => y.player_id !== p.player_id)) })),
-          h(Comparison, { ids: [...a, ...b].map((p) => p.player_id) }))
-      : !rosters ? h(Spinner, { label: "reading the league\u2026" })
-      : rosters.error
-        ? h("p", { className: "err" },
-            "Rosters unavailable: ", rosters.error,
-            " — run `python league_sync.py` to cache all twelve.")
-        : h("div", null,
+            h(RosterPicker, { label: "You send", data: rosters, chosen: a,
+              onToggle: (p2) => setA((x) =>
+                x.find((y) => y.player_id === p2.player_id)
+                  ? x.filter((y) => y.player_id !== p2.player_id)
+                  : [...x, p2]) }),
+            h(RosterPicker, { label: "They send", data: rosters, chosen: b,
+              onToggle: (p2) => setB((x) =>
+                x.find((y) => y.player_id === p2.player_id)
+                  ? x.filter((y) => y.player_id !== p2.player_id)
+                  : [...x, p2]) })),
+          (a.length > 0 || b.length > 0) && h("section", { className: "block" },
+            h("div", { className: "sect-head" }, h("h2", null, "Who is in this trade")),
             h("div", { className: "grid two" },
-              h(RosterPicker, { label: "You send", data: rosters, chosen: a,
-                onToggle: (p) => setA((x) =>
-                  x.find((y) => y.player_id === p.player_id)
-                    ? x.filter((y) => y.player_id !== p.player_id)
-                    : [...x, p]) }),
-              h(RosterPicker, { label: "They send", data: rosters, chosen: b,
-                onToggle: (p) => setB((x) =>
-                  x.find((y) => y.player_id === p.player_id)
-                    ? x.filter((y) => y.player_id !== p.player_id)
-                    : [...x, p]) })),
-            (a.length > 0 || b.length > 0) && h("section", { className: "block" },
-              h("h3", null, "Who is in this trade"),
-              h("div", { className: "grid two" },
-                h(TradeRoster, { title: "You send", players: a,
-                                 pairs: rosters.pairs }),
-                h(TradeRoster, { title: "You get", players: b,
-                                 pairs: rosters.pairs }))),
-            h(Trade, { a, b }),
-            h(TradeFinder, null)));
+              h(TradeRoster, { title: "You send", players: a, pairs: rosters.pairs }),
+              h(TradeRoster, { title: "You get", players: b, pairs: rosters.pairs }))),
+          h(Trade, { a, b }),
+          h(TradeFinder, null)));
 }

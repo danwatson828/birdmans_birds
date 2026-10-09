@@ -45,7 +45,7 @@ export const ROUTES = [
   { id: "matchup",   label: "This week",       icon: "swap",               group: "Fantasy" },
   { id: "fantasy",   label: "Draft board",     icon: "clipboard-text",     group: "Fantasy" },
   { id: "lab",       label: "Keepers & draft", icon: "strategy",           group: "Fantasy" },
-  { id: "compare",   label: "Compare & trade", icon: "arrows-left-right",  group: "Fantasy" },
+  { id: "compare",   label: "Trade analyzer",  icon: "arrows-left-right",  group: "Fantasy" },
 ];
 const ROUTE_IDS = new Set(ROUTES.map((r) => r.id));
 

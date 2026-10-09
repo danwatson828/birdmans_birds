@@ -33,8 +33,8 @@ alone.**
 | 6 | Knowledge base equal-height cards | **done** |
 | 7 | Catalog padding | **done** |
 | 8 | This week dashboard grid | **done** |
-| 9 | Keeper and Draft | not started |
-| 10 | Trade analyzer only | not started |
+| 9 | Keeper and Draft | **done** |
+| 10 | Trade analyzer only | **done** |
 | 11 | Colour / accent pass | not started |
 
 Leave **Ask**, **Model builder** and **Draft board** alone except for moving
@@ -266,6 +266,21 @@ with real availability (starters playing, idle starters, bench with games).
   to EOF, not by deleting one from the end. Deleting from the end made the
   file parse while mis-nesting the tree, so only the tail rendered and the
   page looked empty. The real extra paren was 25 lines earlier.
+
+## Items 9 and 10 — Keeper/Draft, Trade (done)
+
+**9.** The draft room is a real board: 14 rounds down, 12 teams across, 168
+cells, each filled pick painted in the drafting team's colour, your picks
+outlined and the current pick highlighted. **Even rounds are laid out
+reversed**, so a column is one team all the way down -- which is what snake
+order actually means. Best-available sits in a right rail. Keepers is a roster
+table ranked by the board's own total value (same number as the draft board,
+not a second opinion) with a keep toggle and a running kept-value total.
+
+**10.** `CompareView` is the trade analyzer and nothing else; the nav item
+reads "Trade analyzer". Player comparison lives in Players (item 3), which
+renders the same exported `Comparison` component -- so this was a deletion,
+not a rewrite.
 
 ## Baseline to beat
 
