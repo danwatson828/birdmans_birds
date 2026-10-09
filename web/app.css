@@ -271,11 +271,25 @@ code, pre { font-family: var(--mono); }
    Compact by default: an eyebrow, a title and a right-aligned meta strip on
    ONE line where the title is short. The old header was a 42px serif title,
    a 17px lede and a stat row -- about 180px of chrome before any data. */
-/* Every page gets a band of equal presence: a 3px rule in the section
-   accent, or the team colour where a team or player is the subject. */
+/* EVERY page opens on a band of equal presence (item 11).
+   The team page set the bar with a full field of franchise colour; a 3px rule
+   was not the same thing. This is a tinted block in the section's accent with
+   a solid top edge -- enough weight to read as a header, not so much that it
+   competes with a team field on the pages that have one.
+   `--sec` is set on .shell from the route's nav group, so a page cannot
+   forget to carry its section's colour. */
 .page-head { display: flex; align-items: flex-end; gap: var(--s4);
-             flex-wrap: wrap; border-bottom: 3px solid var(--sec);
-             padding-bottom: var(--s2); margin-bottom: var(--s4); }
+             flex-wrap: wrap;
+             background: color-mix(in srgb, var(--sec) 6%, #fff);
+             border: 1px solid color-mix(in srgb, var(--sec) 20%, #fff);
+             border-top: 3px solid var(--sec);
+             border-radius: var(--r2);
+             padding: var(--s3) var(--s4);
+             margin-bottom: var(--s4); }
+/* A page whose subject is a team or a player already carries that identity in
+   its hero, so its band steps back to a rule and lets the hero lead. */
+.team-page .page-head, .hero-team + .statrow, .hero-player + .statrow {
+  background: none; border: 0; padding: 0; }
 .page-head .lhs { min-width: 0; flex: 1 1 auto; }
 .eyebrow { font: 700 var(--t-xs)/1 var(--sans); font-stretch: 85%;
            letter-spacing: .14em; text-transform: uppercase;
@@ -374,8 +388,11 @@ code, pre { font-family: var(--mono); }
    one number each. A strip of label-over-figure separated by hairlines says
    the same thing in a third of the height. */
 .statrow { display: flex; flex-wrap: wrap; background: var(--card);
-           border: 1px solid var(--rule); border-radius: var(--r2);
-           overflow: hidden; }
+           border: 1px solid var(--rule); border-top: 3px solid var(--sec);
+           border-radius: var(--r2); overflow: hidden; }
+/* On a team or player page the strip belongs to that franchise, not to the
+   section, so it takes the team colour. */
+.team-page .statrow, .hero-team ~ .statrow { border-top-color: var(--team-safe); }
 .statrow .st { flex: 1 1 110px; min-width: 0; padding: var(--s2) var(--s3);
                border-right: 1px solid var(--rule-2); }
 .statrow .st:last-child { border-right: 0; }

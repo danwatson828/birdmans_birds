@@ -35,7 +35,7 @@ alone.**
 | 8 | This week dashboard grid | **done** |
 | 9 | Keeper and Draft | **done** |
 | 10 | Trade analyzer only | **done** |
-| 11 | Colour / accent pass | not started |
+| 11 | Colour / accent pass | **done** |
 
 Leave **Ask**, **Model builder** and **Draft board** alone except for moving
 them onto the shared tokens.
@@ -281,6 +281,33 @@ not a second opinion) with a keep toggle and a running kept-value total.
 reads "Trade analyzer". Player comparison lives in Players (item 3), which
 renders the same exported `Comparison` component -- so this was a deletion,
 not a rewrite.
+
+## Item 11 — colour pass (done)
+
+| Section | Accent | Hex |
+|---|---|---|
+| League | ink blue | `#11417f` |
+| Analysis | violet | `#5b3a8e` |
+| Fantasy | burnt amber | `#8a4a0c` |
+
+`--sec` is set on `.shell` from the route's nav group and every page inherits
+it, so a page cannot forget its section's colour. Verified across all 16 page
+types: band, active nav state and first chart series all follow it.
+
+Every page now opens on a **tinted band with a solid top edge**, not a 3px
+rule -- the team page set the bar with a field of franchise colour and a rule
+was not equal presence. Pages whose subject IS a team or player step the band
+back and let the hero lead, and their stat strips take `--team-safe`.
+
+Team colour appears wherever a team or player does: team list edges, player
+directory chips, leaderboard row edges, draft board cells, home results,
+player page band, scoreboard sides. Charts read `--c1..--c10` through
+`token()`. **Zero hardcoded hexes in `web/*.js`** (the single grep match is a
+comment).
+
+All three accents clear 4.5:1 as text on all three grounds and carry white at
+>=6.8:1. Amber is nearest the loss red; it is used only as a large header
+field and never as an inline chip beside a number.
 
 ## Baseline to beat
 
