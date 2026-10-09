@@ -32,7 +32,7 @@ alone.**
 | 5 | League evolution (explorable) | **done** |
 | 6 | Knowledge base equal-height cards | **done** |
 | 7 | Catalog padding | **done** |
-| 8 | This week dashboard grid | not started |
+| 8 | This week dashboard grid | **done** |
 | 9 | Keeper and Draft | not started |
 | 10 | Trade analyzer only | not started |
 | 11 | Colour / accent pass | not started |
@@ -239,6 +239,33 @@ reset in CSS where the clamp survives it.
 ASSERTION corrected rather than the code. Each time the error was the same --
 asserting something adjacent to the defect instead of the defect itself. Prove
 a new check fails on the broken state before trusting a pass.
+
+## Item 8 — This week (done)
+
+A dashboard grid: nine compact category cells in the main column (score,
+bar, margin, closeness, flippable chip, win/loss border), a **330px right
+rail** for the advisory, the reconciliation note, flips and the waiver radar,
+and the lineup behind tabs. Measured: the flips panel is **29%** of the page
+width, where it previously spanned 100% for content needing about a third.
+
+### Deviation: "daily lineup as tabs by date"
+
+Not possible from the data and not faked. `lineup.days` is an integer count,
+not a per-date breakdown -- the optimiser produces ONE lineup for the week --
+and `/api/fantasy/outlook`'s digest covers a single day. Seven date tabs would
+imply per-day assignments the model never made. The two tabs are the two
+things that exist: **Week (N days)** with the optimised lineup, and **Today**
+with real availability (starters playing, idle starters, bench with games).
+
+### Two process notes
+
+- `node --check` on a `.js` file does **not** reliably catch module syntax
+  errors. It passed a file the browser refused. Check with a `.mjs` copy:
+  `cp web/x.js /tmp/c.mjs && node --check /tmp/c.mjs`.
+- When a paren count is wrong, find it by **counting depth** from the return
+  to EOF, not by deleting one from the end. Deleting from the end made the
+  file parse while mis-nesting the tree, so only the tail rendered and the
+  page looked empty. The real extra paren was 25 lines earlier.
 
 ## Baseline to beat
 

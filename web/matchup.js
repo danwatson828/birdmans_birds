@@ -137,6 +137,76 @@ function Retro({ r }) {
       + "ball over."));
 }
 
+// The lineup, behind tabs.
+//
+// NOT tabs by date: the optimiser produces ONE lineup for the week -- the API
+// returns `days` as a count, not a per-date breakdown -- and seven fabricated
+// date tabs would imply per-day assignments the model never made. The two
+// tabs are the two things that genuinely exist: the week's optimised lineup,
+// and today's actual availability from the digest.
+function LineupByDay({ lineup }) {
+  const [tab, setTab] = useState("week");
+  const [dg, setDg] = useState(null);
+  useEffect(() => {
+    if (tab === "today" && dg === null) {
+      api("/api/fantasy/outlook").then((o) => setDg(o.digest || false))
+        .catch(() => setDg(false));
+    }
+  }, [tab, dg]);
+  return h("section", { style: { marginTop: "var(--s5)" } },
+    h("div", { className: "sect-head" },
+      h("h2", null, "Lineup"),
+      h("span", { className: "count" },
+        `${lineup.n_changes} change${lineup.n_changes === 1 ? "" : "s"} from the one set`)),
+    h("div", { className: "tabs", role: "tablist" },
+      h("button", { role: "tab", "aria-selected": tab === "week",
+        onClick: () => setTab("week") }, `Week (${lineup.days} days)`),
+      h("button", { role: "tab", "aria-selected": tab === "today",
+        onClick: () => setTab("today") }, "Today")),
+    tab === "week"
+      ? h("div", null,
+          h("div", { className: "table-full scroll-x" },
+            h("table", { className: "data" },
+              h("thead", null, h("tr", null,
+                h("th", null, "Slot"), h("th", { className: "name" }, "Player"),
+                h("th", null, "G"), h("th", null, "Value"),
+                h("th", { className: "name" }, ""))),
+              h("tbody", null, lineup.slots.map((a, i2) =>
+                h("tr", { key: i2 },
+                  h("td", { className: "faint" }, a.slot),
+                  h("td", { className: "name" }, a.player || "\u2014"),
+                  h("td", null, a.games ?? "\u2014"),
+                  h("td", null, a.value == null ? "\u2014" : fmt(a.value, 2)),
+                  h("td", { className: "name" }, !a.was_starting && a.player
+                    ? h("span", { className: "chip info" }, "change") : "")))))),
+          h("p", { className: "faint", style: { fontSize: "var(--t-xs)" } },
+            `Objective: ${lineup.objective}. Measured across 25 weeks of season `
+            + "2025 against the lineup left unchanged, with projections that "
+            + "could not see the season: 5.58 of 9 categories on average, "
+            + "winning 17 of 25 weeks. A category-targeting objective scored "
+            + "worse (5.28, 16 of 25), so it is not the default."))
+      : dg === null ? h(Spinner, null)
+      : dg === false ? h("p", { className: "muted" }, "today's digest unavailable")
+      : h("div", { className: "today" },
+          h("div", { className: "statrow" },
+            h("div", { className: "st" }, h("div", { className: "k" }, "Date"),
+              h("div", { className: "v" }, dg.day)),
+            h("div", { className: "st" }, h("div", { className: "k" }, "Starters playing"),
+              h("div", { className: "v" }, `${dg.starters_playing}/${dg.starters_total}`)),
+            h("div", { className: "st" }, h("div", { className: "k" }, "Idle starters"),
+              h("div", { className: "v " + ((dg.idle_starters || []).length ? "neg" : "") },
+                (dg.idle_starters || []).length)),
+            h("div", { className: "st" }, h("div", { className: "k" }, "Bench playing"),
+              h("div", { className: "v" }, (dg.bench_playing || []).length))),
+          (dg.idle_starters || []).length > 0 && h("p", null,
+            h("b", null, "Idle starters: "),
+            dg.idle_starters.map((p2) => p2.name || p2).join(", ")),
+          (dg.bench_playing || []).length > 0 && h("p", null,
+            h("b", null, "Bench with games: "),
+            dg.bench_playing.map((p2) => p2.name).join(", ")),
+          dg.note && h("p", { className: "faint" }, dg.note)));
+}
+
 export function Matchup() {
   const [d, setD] = useState(null);
   const [extra, setExtra] = useState(null);
@@ -153,144 +223,110 @@ export function Matchup() {
   const s = d.summary || {};
   const flipFor = (cat) => (d.flips || []).find((f) => f.category === cat);
 
+  // A DASHBOARD, not a column of panels. The nine categories are compact
+  // scoreboard cells in the main column; flips and the waiver radar sit in a
+  // right rail where they are advice ABOUT the categories rather than another
+  // full-width table after them. "What would flip a losing category" used to
+  // span the whole page for content that needs about a third of it.
   return h("div", null,
     h("header", { className: "page-head" },
-      h("div", { className: "eyebrow" }, "Fantasy · weekly matchup"),
-      h("h2", null, d.opponent ? `vs ${d.opponent}` : "Matchup"),
-      h("p", { className: "lede" },
-        `${d.season_label} · scoring period ${d.scoring_period ?? "—"}. `
-        + `Category state, what would flip a losing one, the best legal lineup `
-        + `for the week, and free agents worth a roster spot.`),
-      h("div", { className: "meta-row" },
+      h("div", { className: "lhs" },
+        h("div", { className: "eyebrow" }, "Fantasy \u00b7 weekly matchup"),
+        h("h1", null, d.opponent ? `vs ${d.opponent}` : "Matchup"),
+        h("p", { className: "lede" },
+          `${d.season_label} \u00b7 scoring period ${d.scoring_period ?? "\u2014"}. `
+          + "Category state, what would flip a losing one, the best legal "
+          + "lineup for the week, and free agents worth a roster spot.")),
+      h("div", { className: "meta" },
         h("span", null, h("b", null,
-          `${d.category_wins?.me ?? s.winning}–${d.category_wins?.opponent ?? s.losing}`),
-          " categories"),
-        w.found && h("span", null, h("b", null, "Week "), w.start, " +7d"),
+          `${d.category_wins?.me ?? s.winning}\u2013${d.category_wins?.opponent ?? s.losing}`),
+          "categories"),
+        w.found && h("span", null, h("b", null, w.start), "week"),
         h("span", null, h("b", null, d.roster.filter((p) => p.mapped).length),
-          `/${d.roster.length} players matched`))),
+          `of ${d.roster.length} matched`))),
 
-    h("div", { className: "panel warn", style: { marginBottom: 18 } },
-      h("p", { style: { margin: 0 } }, h("b", null, "Advisory. "), d.advisory)),
-
-    // The one claim on this page that is checked rather than asserted.
-    w.found && h("div", { className: "panel accent", style: { marginBottom: 18 } },
-      h("p", { style: { margin: 0, fontSize: 13 } },
-        h("b", null, "Reconciled. "),
-        `All nine categories recomputed from box scores match ESPN exactly for `
-        + `the week of ${w.start} (total absolute error `
-        + `${(w.abs_error ?? 0).toExponential(1)}). That confirms the player `
-        + `identity map, the starters-only scoring rule, and the week itself — `
-        + `ESPN's cache carries a scoring period but no dates.`)),
-
-    h("section", { className: "block" },
-      h("h3", null, "Categories"),
-      h("div", { className: "panel scroll-x" },
-        h("table", { className: "data" },
-          h("thead", null, h("tr", null,
-            h("th", { className: "name" }, "Cat"), h("th", null, "Mine"),
-            h("th", null, "Theirs"), h("th", { style: { width: 150 } }, ""),
-            h("th", null, "Margin"), h("th", { className: "name" }, "State"))),
-          h("tbody", null, (d.state || []).map((c) => {
-            const f = flipFor(c.category);
-            return h("tr", { key: c.category,
-                className: c.status === "winning" ? "win" : c.status === "losing" ? "loss" : "" },
-              h("td", { className: "name" }, h("b", null, c.category),
-                c.lower_wins && h("span", { className: "faint",
-                  style: { fontWeight: 400, marginLeft: 5, fontSize: 10 } }, "low wins")),
-              h("td", null, val(c.category, c.mine)),
-              h("td", { className: "faint" }, val(c.category, c.theirs)),
-              h("td", null, h(Bar, { mine: c.mine, theirs: c.theirs, lower: c.lower_wins })),
-              h("td", { className: "margin " + (c.margin > 0 ? "pos" : "neg") },
+    h("div", { className: "mk-grid" },
+      h("div", { className: "mk-main" },
+        // Nine cells, not nine table rows: a category is a score you glance at.
+        h("div", { className: "catcells" }, (d.state || []).map((c) => {
+          const f = flipFor(c.category);
+          const st = c.status === "winning" ? "w" : c.status === "losing" ? "l" : "t";
+          return h("div", { key: c.category, className: "cat " + st },
+            h("div", { className: "c-head" },
+              h("span", { className: "c-name" }, c.category),
+              c.lower_wins && h("span", { className: "c-low" }, "low wins"),
+              h("span", { className: "c-state" },
+                st === "w" ? "WIN" : st === "l" ? "LOSS" : "TIE")),
+            h("div", { className: "c-score" },
+              h("span", { className: "mine" }, val(c.category, c.mine)),
+              h("span", { className: "vs" }, "\u2013"),
+              h("span", { className: "theirs" }, val(c.category, c.theirs))),
+            h(Bar, { mine: c.mine, theirs: c.theirs, lower: c.lower_wins }),
+            h("div", { className: "c-foot" },
+              h("span", { className: "margin " + (c.margin > 0 ? "pos" : "neg") },
                 (c.margin > 0 ? "+" : "")
                 + (PCT_CATS.has(c.category) ? (c.margin * 100).toFixed(2) + "pp"
                                             : fmt(c.margin, 0))),
-              h("td", { className: "name" },
-                h("span", { className: "wl " + (c.status === "winning" ? "w" : "l") },
-                  c.status === "winning" ? "W" : c.status === "losing" ? "L" : "T"),
-                h("span", { className: "faint", style: { marginLeft: 7, fontSize: 11 } },
-                  c.closeness),
-                f && f.closes_gap && h("span", { className: "tag ok",
-                  style: { marginLeft: 7 } }, "flippable")));
-          })))),
-      h("p", { className: "faint", style: { fontSize: 11 } },
-        `Close and losing: ${(s.flippable || []).join(", ") || "none"}. `
-        + `Close and winning, so worth protecting: ${(s.at_risk || []).join(", ") || "none"}.`)),
+              h("span", { className: "c-close" }, c.closeness),
+              f && f.closes_gap && h("span", { className: "chip ok" }, "flippable")));
+        })),
+        h("p", { className: "faint", style: { fontSize: "var(--t-xs)" } },
+          `Close and losing: ${(s.flippable || []).join(", ") || "none"}. `
+          + `Close and winning, so worth protecting: `
+          + `${(s.at_risk || []).join(", ") || "none"}.`),
 
-    (d.flips || []).length > 0 && h("section", { className: "block" },
-      h("h3", null, "What would flip a losing category"),
-      h("div", { className: "panel" },
-        (d.flips || []).map((f) => h("div", { key: f.category, className: "flip" },
-          h("div", { className: "flip-cat" }, f.category),
-          f.bench_in
-            ? h("div", null,
-                h("div", null, "Start ", h("b", null, f.bench_in),
-                  ` (${f.bench_games} games) over `, h("b", null, f.starter_out),
-                  ` (${f.starter_games})`),
-                h("div", { className: "faint", style: { fontSize: 12, marginTop: 2 } },
-                  PCT_CATS.has(f.category)
-                    ? `+${(f.gain * 100).toFixed(2)}pp against a ${(f.need * 100).toFixed(2)}pp gap`
-                    : `+${fmt(f.gain, 1)} against a gap of ${fmt(f.need, 1)}`,
-                  f.closes_gap ? " — closes it" : " — not enough on its own",
-                  (f.would_lose || []).length
-                    ? ` · would give up ${f.would_lose.join(", ")}` : ""))
-            : h("div", { className: "faint" }, f.note || "no bench swap helps")))),
-      h("p", { className: "faint", style: { fontSize: 11 } },
-        "Start/sit only — adds and drops are the waiver section's job. "
-        + "Opponent totals are held at their current value, so these gaps are "
-        + "the minimum, not the requirement.")),
+        d.lineup && h(LineupByDay, { lineup: d.lineup })),
 
-    d.lineup && h("section", { className: "block" },
-      h("h3", null, `Lineup — ${d.lineup.n_changes} change`
-        + `${d.lineup.n_changes === 1 ? "" : "s"} from the one set`),
-      h("div", { className: "panel scroll-x" },
-        h("table", { className: "data" },
-          h("thead", null, h("tr", null,
-            h("th", null, "Slot"), h("th", { className: "name" }, "Player"),
-            h("th", null, "Games"), h("th", null, "Value"), h("th", { className: "name" }, ""))),
-          h("tbody", null, d.lineup.slots.map((a, i) =>
-            h("tr", { key: i },
-              h("td", { className: "faint" }, a.slot),
-              h("td", { className: "name" }, a.player || "—"),
-              h("td", null, a.games ?? "—"),
-              h("td", null, a.value == null ? "—" : fmt(a.value, 2)),
-              h("td", { className: "name" }, !a.was_starting && a.player
-                ? h("span", { className: "tag accent" }, "change") : "")))))),
-      h("p", { className: "faint", style: { fontSize: 11 } },
-        `Objective: ${d.lineup.objective}. Measured across 25 weeks of `
-        + "season 2025 against the lineup left unchanged, with projections "
-        + "that could not see the season: 5.58 of 9 categories on average, "
-        + "winning 17 of 25 weeks. A category-targeting objective scored "
-        + "worse (5.28, 16 of 25), so it is not the default.")),
+      h("aside", { className: "mk-rail" },
+        h("div", { className: "panel warn" },
+          h("p", { style: { margin: 0, fontSize: "var(--t-sm)" } },
+            h("b", null, "Advisory. "), d.advisory)),
+        w.found && h("div", { className: "panel accent" },
+          h("p", { style: { margin: 0, fontSize: "var(--t-sm)" } },
+            h("b", null, "Reconciled. "),
+            "All nine categories recomputed from box scores match ESPN exactly "
+            + `for the week of ${w.start} (total absolute error `
+            + `${(w.abs_error ?? 0).toExponential(1)}).`)),
 
-    d.waivers && h("section", { className: "block" },
-      h("h3", null, "Waiver radar"),
-      !d.waivers.available
-        ? h("p", { className: "muted" }, d.waivers.reason)
-        : h("div", null,
-            h("p", { className: "faint", style: { fontSize: 12, marginTop: 0 } },
-              `${d.waivers.basis}. Weakest rostered bench: `,
-              h("b", null, d.waivers.weakest_bench.name),
-              ` (${fmt(d.waivers.weakest_bench.projected_value, 2)}). `,
-              `${d.waivers.free_agents_with_projection} of `
-              + `${d.waivers.free_agents_seen} free agents have a projection.`),
-            d.waivers.candidates.length === 0
-              ? h("p", { className: "muted" }, "Nothing on the wire projects above your bench.")
-              : h("div", { className: "panel scroll-x" },
-                  h("table", { className: "data" },
-                    h("thead", null, h("tr", null,
-                      h("th", { className: "name" }, "Player"), h("th", null, "Tm"),
-                      h("th", null, "Pos"), h("th", null, "Proj value"),
-                      h("th", null, "Beats"), h("th", null, "By"),
-                      h("th", null, "Games"))),
-                    h("tbody", null, d.waivers.candidates.map((c) =>
-                      h("tr", { key: c.name },
-                        h("td", { className: "name" }, c.name),
-                        h("td", { className: "faint" }, c.pro_team || "—"),
-                        h("td", { className: "faint" }, c.position || "—"),
-                        h("td", null, h("b", null, fmt(c.projected_value, 2))),
-                        h("td", { className: "faint" }, c.beats),
-                        h("td", { className: "margin pos" }, "+" + fmt(c.beats_by, 2)),
-                        h("td", null, c.games_this_week ?? "—")))))))),
+        (d.flips || []).length > 0 && h("section", { className: "panel" },
+          h("div", { className: "div-head" }, "Would flip a losing category"),
+          (d.flips || []).map((f) => h("div", { key: f.category, className: "flip" },
+            h("div", { className: "flip-cat" }, f.category),
+            f.bench_in
+              ? h("div", null,
+                  h("div", null, "Start ", h("b", null, f.bench_in),
+                    ` (${f.bench_games}g) over `, h("b", null, f.starter_out),
+                    ` (${f.starter_games}g)`),
+                  h("div", { className: "faint", style: { fontSize: "var(--t-xs)", marginTop: 2 } },
+                    PCT_CATS.has(f.category)
+                      ? `+${(f.gain * 100).toFixed(2)}pp against ${(f.need * 100).toFixed(2)}pp`
+                      : `+${fmt(f.gain, 1)} against ${fmt(f.need, 1)}`,
+                    f.closes_gap ? " \u2014 closes it" : " \u2014 not enough alone",
+                    (f.would_lose || []).length
+                      ? ` \u00b7 gives up ${f.would_lose.join(", ")}` : ""))
+              : h("div", { className: "faint" }, f.note || "no bench swap helps"))),
+          h("p", { className: "faint", style: { fontSize: "var(--t-xs)", margin: "var(--s2) 0 0" } },
+            "Start/sit only. Opponent totals held at their current value, so "
+            + "these gaps are the minimum.")),
+
+        d.waivers && h("section", { className: "panel" },
+          h("div", { className: "div-head" }, "Waiver radar"),
+          !d.waivers.available
+            ? h("p", { className: "muted", style: { margin: 0 } }, d.waivers.reason)
+            : d.waivers.candidates.length === 0
+              ? h("p", { className: "muted", style: { margin: 0 } },
+                  "Nothing on the wire projects above your bench.")
+              : h("ul", { className: "wv" }, d.waivers.candidates.slice(0, 8).map((c) =>
+                  h("li", { key: c.name },
+                    h("span", { className: "n" }, c.name),
+                    h("span", { className: "t" }, c.pro_team || "\u2014"),
+                    h("span", { className: "v" }, fmt(c.projected_value, 2)),
+                    h("span", { className: "b" }, "+" + fmt(c.beats_by, 2)))))),
+
+        h("section", { className: "panel no-print" },
+          h("div", { className: "div-head" }, "Written advice"),
+          h(NarrateButton, { kind: "matchup", label: "Write this week's advice" })))),
+
     extra && h(Digest, { dg: extra.digest }),
     extra && h(Ahead, { sched: extra.schedule }),
     extra && h(Outlook, { o: extra }),
