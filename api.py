@@ -2916,6 +2916,38 @@ def era_adjusted(player_id: int, game_type: str = "regular",
     }
 
 
+# Rule changes worth a marker on a league trend. CURATED, exactly like the
+# brand colours: none of this is in the snapshot, the `games` table has no
+# rule-era column, and a page that draws these lines must say so rather than
+# imply the data knows. Seasons are the START season of the change.
+ERA_MARKERS = [
+    {"season": 1979, "label": "Three-point line",
+     "note": "introduced for 1979-80"},
+    {"season": 1997, "label": "Shortened three",
+     "note": "line brought in 1994-95 to 1996-97; back out for 1997-98"},
+    {"season": 2001, "label": "Zone defence legal",
+     "note": "illegal-defence rules dropped, defensive three seconds added"},
+    {"season": 2004, "label": "Hand-check ban",
+     "note": "perimeter hand-checking enforced out for 2004-05"},
+    {"season": 2017, "label": "Freedom of movement",
+     "note": "points of emphasis on grabbing and holding"},
+]
+
+
+@app.get("/api/explore/era-markers")
+def era_markers() -> dict:
+    """Rule changes to mark on a league trend.
+
+    `curated: true` for the same reason /api/brand is: this is hand-entered
+    knowledge about the sport, not something the snapshot contains. A chart
+    drawing these should label them as curated.
+    """
+    return {"curated": True,
+            "source": "hand-entered from the NBA rule-change record; the "
+                      "snapshot has no rule-era column",
+            "markers": ERA_MARKERS}
+
+
 @app.get("/api/explore/evolution")
 def league_evolution(game_type: str = "regular") -> dict:
     """League-wide trends across the full 1946-2025 range.

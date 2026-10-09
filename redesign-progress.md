@@ -29,7 +29,7 @@ alone.**
 | 2 | Teams | **done** |
 | 3 | Players directory (comparison lives inside) | **done** |
 | 4 | Leaderboards (top-N cards) | **done** |
-| 5 | League evolution (explorable) | not started |
+| 5 | League evolution (explorable) | **done** |
 | 6 | Knowledge base equal-height cards | not started |
 | 7 | Catalog padding | not started |
 | 8 | This week dashboard grid | not started |
@@ -182,6 +182,32 @@ server recomputes rates from summed totals.
 **Players vs Leaderboards is now structural, not cosmetic:** Players is one
 wide table of everyone that the client sorts; Leaderboards is many short
 rankings you scan, each stating its terms.
+
+## Item 5 — League evolution (done)
+
+One metric selector driving a main chart with a brush range, a hover readout,
+and an optional second metric **indexed to the range's first season = 100**
+(pace and three-point rate do not share an axis; plotting them raw makes the
+flatter line look like nothing happened). A small-multiples strip below, where
+clicking a tile promotes it to the main chart.
+
+Era markers come from a new read-only **`/api/explore/era-markers`**, flagged
+`curated: true` for the same reason `/api/brand` is -- the snapshot has no
+rule-era column. Five markers (1979 three-point line, 1997 line restored,
+2001 zone defence, 2004 hand-check ban, 2017 freedom of movement), drawn
+dashed and labelled, with the caption saying they are curated, not data.
+Verified: 4 render on the 3PAr series, the 1979 one correctly falling outside
+that series' reliable range.
+
+Finding #57 is a preset button (both series, from 1983).
+
+Charts are hand-drawn SVG rather than Vega: a brush, a hover readout, an
+indexed second axis and clickable markers are more code through a chart
+grammar than as paths.
+
+Bug caught in review: promoting a tile could set the main metric to whatever
+was already overlaid ("X, with X overlaid"). Picking the overlay as the main
+now clears it.
 
 ## Baseline to beat
 

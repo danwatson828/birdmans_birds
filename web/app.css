@@ -479,6 +479,38 @@ code, pre { font-family: var(--mono); }
 .entry p { margin: 0; font-size: var(--t-sm); color: var(--muted); }
 .entry a.lead p { color: rgba(255,255,255,.9); }
 
+/* ---- league evolution: explorable trend -------------------------------- */
+.trend svg { display: block; cursor: crosshair; }
+.tr-read { display: flex; flex-wrap: wrap; gap: var(--s4); align-items: baseline;
+           min-height: 20px; margin-top: var(--s2);
+           font: 400 var(--t-sm)/1.4 var(--sans); color: var(--ink-2); }
+.tr-read .s { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+.tr-read i { display: inline-block; width: 9px; height: 3px; border-radius: 2px;
+             margin-right: 6px; vertical-align: middle; }
+.tr-read b { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+.tr-read em { color: var(--faint); font-style: normal; font-family: var(--mono);
+              font-size: var(--t-xs); }
+.tr-read .hint { color: var(--faint); font-size: var(--t-xs); }
+.tr-brush { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+            margin-top: var(--s3); padding-top: var(--s3);
+            border-top: 1px solid var(--rule-2);
+            font: 600 var(--t-xs)/1 var(--sans); font-stretch: 85%;
+            letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+.tr-brush label { display: flex; align-items: center; gap: var(--s2); }
+.tr-brush input[type="range"] { width: 170px; accent-color: var(--sec); }
+.tr-brush .rng { font-family: var(--mono); font-size: var(--t-sm);
+                 letter-spacing: 0; text-transform: none; color: var(--ink); }
+
+.smalls { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+          gap: var(--s2); }
+.sm { display: flex; flex-direction: column; gap: 2px; text-align: left;
+      background: var(--card); border: 1px solid var(--rule);
+      border-radius: var(--r2); padding: var(--s2); cursor: pointer; }
+.sm:hover { border-color: var(--sec); background: var(--sunken); }
+.sm.on { border-color: var(--sec); border-width: 2px; padding: calc(var(--s2) - 1px); }
+.sm-lab { font: 600 var(--t-xs)/1.2 var(--sans); color: var(--ink); }
+.sm-rng { font: 500 var(--t-xs)/1 var(--mono); color: var(--muted); }
+
 /* ---- leaders board ------------------------------------------------------
    A grid of short rankings. Deliberately NOT a wide table: Players is the wide
    table, and the two pages were twice built to look alike. */
