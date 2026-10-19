@@ -275,6 +275,14 @@ if WEB_DIR.is_dir():
         return FileResponse(WEB_DIR / "index.html",
                             headers={"Cache-Control": "no-store, must-revalidate"})
 
+    # The live draft room is its own page, not a route inside the SPA: it has
+    # to keep working as a standalone file with the board baked in (see
+    # build_draft_page.py), so it cannot depend on the app shell.
+    @app.get("/draft")
+    def draft_page() -> FileResponse:
+        return FileResponse(WEB_DIR / "draft.html",
+                            headers={"Cache-Control": "no-store, must-revalidate"})
+
 
 # =============================================================================
 # Explorer -- no LLM (design spec section 14, "Explore" mode)
@@ -3183,6 +3191,36 @@ def fantasy_keepers() -> dict:
     }
 
 
+@app.get("/api/fantasy/live-draft")
+def fantasy_live_draft() -> dict:
+    """The real draft as ESPN has it: teams, order, every slot, keepers, picks.
+
+    READ-ONLY, one GET to ESPN per call. The draft page polls this while
+    auto-sync is on and treats it as the source of truth for picks; the page
+    itself maps ESPN player ids onto the board through the board's own
+    `espn_id` column, so no second id map lives here.
+    """
+    import os
+    import requests
+    import league_sync as ls
+    swid, s2 = os.environ.get("ESPN_SWID"), os.environ.get("ESPN_S2")
+    if not (swid and s2):
+        raise HTTPException(503, "ESPN_SWID and ESPN_S2 are not set in .env, so "
+                                 "the draft cannot be read from ESPN. Enter "
+                                 "picks by hand on the page instead.")
+    league_id = int(os.environ.get("ESPN_LEAGUE_ID") or 1127755466)
+    season = int(os.environ.get("ESPN_SEASON") or 2027)
+    try:
+        raw = ls.fetch_live_draft(league_id, season, swid, s2)
+    except requests.RequestException as exc:
+        raise HTTPException(502, f"ESPN did not answer ({type(exc).__name__}: "
+                                 f"{str(exc)[:160]})")
+    return {"league_id": league_id, "season": season,
+            "my_team_id": int(os.environ.get("ESPN_TEAM_ID") or 10),
+            "fetched_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+            **ls.extract_live_draft(raw)}
+
+
 class MockDraftRequest(BaseModel):
     """Stateless: the client sends every pick made so far and the server
     replays the draft. Deterministic given (seed, picks), so no session state
@@ -3550,7 +3588,8 @@ DRAFT_PAIRS = [("pts", "z_pts", "PTS"), ("reb", "z_reb", "REB"),
 
 
 @app.get("/api/fantasy/draft-board")
-def fantasy_draft_board(window: str = "blend", limit: int = 400) -> dict:
+def fantasy_draft_board(window: str = "blend", limit: int = 400,
+                        unranked: bool = False) -> dict:
     """Read a board produced by draft_board.py.
 
     Deliberately a reader, not a re-implementation: the ranking logic, the
@@ -3597,6 +3636,11 @@ def fantasy_draft_board(window: str = "blend", limit: int = 400) -> dict:
                         for k, v in DRAFT_WINDOWS.items()],
             "pairs": [{"stat": a, "z": b, "label": c} for a, b, c in DRAFT_PAIRS],
             "rows": ranked[:limit], "total": len(ranked),
+            # Rookies with no NBA line carry no board_rank, so `rows` never
+            # shows them. The live draft page needs them anyway -- other teams
+            # draft them -- and asks with unranked=1.
+            "unranked": ([r for r in rows if r.get("board_rank") is None]
+                         if unranked else []),
             "columns": list(rows[0].keys()) if rows else [],
             "generated": dt.datetime.fromtimestamp(
                 path.stat().st_mtime).astimezone().isoformat(timespec="seconds"),

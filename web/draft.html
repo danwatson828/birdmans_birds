@@ -1,0 +1,1139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bubble Draft Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!-- FONTS --><link rel="stylesheet" href="/static/fonts.css"><!-- /FONTS -->
+<style>
+/* Layout: a draft-room clipboard. The clock and the entry line sit on top,
+   the call sheet beside your roster, the full board underneath.
+   Colours follow web/app.css: paper ground, ink text, the Fantasy section's
+   amber for the band, league blue for "you", win green / loss red for data. */
+:root {
+  --paper: #f7f8fa;
+  --card: #ffffff;
+  --sunken: #eef1f5;
+  --rule: #d2d8e1;
+  --rule-2: #e3e7ed;
+  --ink: #121820;
+  --ink-2: #333b47;
+  --muted: #4e5765;
+  --faint: #5f6875;
+  --sec: #8a4a0c;
+  --sec-w: #f8eee5;
+  --on-sec: #ffffff;
+  --me: #11417f;
+  --me-w: #e8eefa;
+  --win: #0f6b42;
+  --win-w: #e4f2eb;
+  --loss: #a82f27;
+  --loss-w: #fbe9e7;
+  --warn: #7a5206;
+  --warn-w: #fcf2de;
+  --shadow: 0 1px 2px rgba(18, 24, 32, .06), 0 4px 14px rgba(18, 24, 32, .06);
+
+  --f-ui: "Archivo", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12161c; --card: #1a2029; --sunken: #222a35; --rule: #364152; --rule-2: #2a3340;
+    --ink: #e9edf2; --ink-2: #c9d1db; --muted: #a3adba; --faint: #8f99a7;
+    --sec: #e3a56a; --sec-w: #2b2018; --on-sec: #1c1208;
+    --me: #92b6f2; --me-w: #1b2a44;
+    --win: #5cc58f; --win-w: #16301f; --loss: #f08a80; --loss-w: #3a1d1b;
+    --warn: #e3b45c; --warn-w: #332910;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12161c; --card: #1a2029; --sunken: #222a35; --rule: #364152; --rule-2: #2a3340;
+  --ink: #e9edf2; --ink-2: #c9d1db; --muted: #a3adba; --faint: #8f99a7;
+  --sec: #e3a56a; --sec-w: #2b2018; --on-sec: #1c1208;
+  --me: #92b6f2; --me-w: #1b2a44;
+  --win: #5cc58f; --win-w: #16301f; --loss: #f08a80; --loss-w: #3a1d1b;
+  --warn: #e3b45c; --warn-w: #332910;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+/* Component display rules (.sync, #toast) must not resurrect hidden elements. */
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 14px/1.45 var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+  z-index: 10; background: var(--paper);
+}
+.wrap {
+  max-width: 1360px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.num, .mono { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--me); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---- buttons ----------------------------------------------------------- */
+.btn {
+  display: inline-flex; align-items: center; gap: var(--s1);
+  border: 1px solid var(--rule); background: var(--card); color: var(--ink);
+  border-radius: var(--r); padding: 6px 12px; cursor: pointer; font-weight: 600;
+  font-size: 13px; white-space: nowrap;
+}
+.btn:hover { background: var(--sunken); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--sec); border-color: var(--sec); color: var(--on-sec); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.me { background: var(--me); border-color: var(--me); color: var(--card); }
+.btn.small { padding: 3px 8px; font-size: 12px; }
+.btn.danger { color: var(--loss); border-color: var(--loss); }
+
+/* ---- band -------------------------------------------------------------- */
+.band { background: var(--sec-w); border-top: 4px solid var(--sec); border-bottom: 1px solid var(--rule); }
+.band-in {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--s4) var(--s5);
+  align-items: center; padding-block: var(--s4);
+}
+.eyebrow {
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--sec);
+}
+h1 { font-size: 30px; font-weight: 800; font-stretch: 80%; letter-spacing: -.01em; line-height: 1.1; }
+.clock { display: flex; gap: var(--s4); align-items: baseline; }
+.clock .big { font-family: var(--f-num); font-size: 26px; font-weight: 600; }
+.clock .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.clock .who { font-weight: 700; font-size: 15px; }
+.clock.mine .who { color: var(--me); }
+.onclock-pill {
+  display: inline-block; background: var(--me); color: var(--card); font-weight: 800;
+  font-stretch: 85%; letter-spacing: .04em; text-transform: uppercase; font-size: 12px;
+  padding: 3px 8px; border-radius: 999px;
+}
+.actions { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; justify-content: flex-end; }
+.sync { display: inline-flex; gap: var(--s2); align-items: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); display: inline-block; }
+.dot.ok { background: var(--win); }
+.dot.err { background: var(--loss); }
+
+/* ---- entry bar ---------------------------------------------------------- */
+.entry-bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--paper); border-bottom: 1px solid var(--rule); padding-block: var(--s3);
+}
+.entry-row { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+.entry-for { font-size: 13px; color: var(--muted); min-width: 0; }
+.entry-for b { color: var(--ink); }
+.entry { position: relative; flex: 1 1 320px; min-width: 0; }
+#pick-input {
+  width: 100%; font-size: 17px; padding: 10px 14px; border-radius: var(--r);
+  border: 2px solid var(--rule); background: var(--card);
+}
+#pick-input:focus { border-color: var(--sec); outline: none; }
+.entry-bar.mine #pick-input { border-color: var(--me); }
+#suggest {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: var(--s1);
+  list-style: none; background: var(--card); border: 1px solid var(--rule); border-radius: var(--r);
+  box-shadow: var(--shadow); max-height: 60vh; overflow-y: auto;
+}
+#suggest li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--s3);
+  padding: 7px 10px; border-radius: 4px; cursor: pointer; align-items: baseline;
+}
+#suggest li[aria-selected="true"] { background: var(--sec-w); }
+#suggest li .sname { font-weight: 600; }
+#suggest li .smeta { font-size: 12px; color: var(--muted); }
+.hints { font-size: 12px; }
+@media (max-width: 640px) { .hints { display: none; } }
+.kbd { font-family: var(--f-num); font-size: 11px; border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px; color: var(--muted); }
+
+/* ---- main grid ----------------------------------------------------------- */
+.grid {
+  display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: var(--s5); padding-block: var(--s5); align-items: start;
+}
+.lower { grid-column: 1 / -1; min-width: 0; }
+@media (max-width: 960px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .band-in { grid-template-columns: minmax(0, 1fr); }
+  .actions { justify-content: flex-start; }
+}
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
+h2 { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.sub { font-size: 12.5px; color: var(--muted); }
+.panel { background: var(--card); border: 1px solid var(--rule); border-radius: var(--r); }
+.callout {
+  border: 1px solid var(--warn); background: var(--warn-w); color: var(--ink); border-radius: var(--r);
+  padding: var(--s3) var(--s4); display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap;
+  margin-bottom: var(--s4);
+}
+.callout p { margin: 0; flex: 1 1 260px; }
+
+/* ---- call sheet ---------------------------------------------------------- */
+#recs { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.rec {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) 104px 92px auto;
+  gap: var(--s1) var(--s3); align-items: center; padding: 10px var(--s3);
+  border-bottom: 1px solid var(--rule-2);
+}
+.rec:last-child { border-bottom: 0; }
+.rec.top { background: var(--me-w); }
+.rec .n { font-family: var(--f-num); color: var(--faint); font-size: 13px; text-align: right; }
+.rec .who { min-width: 0; }
+.rec .nm { font-weight: 700; font-size: 15px; }
+.rec .meta { font-size: 12px; color: var(--muted); margin-left: 4px; }
+.rec .why { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.rec .line { grid-column: 2 / -1; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.gain { display: grid; gap: 3px; }
+.gain .v { font-family: var(--f-num); font-weight: 600; font-size: 14px; }
+.gain .v small { font-family: var(--f-ui); font-weight: 500; color: var(--muted); font-size: 11px; }
+.bar { height: 5px; background: var(--sunken); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--sec); }
+.surv { font-size: 12px; color: var(--muted); line-height: 1.25; }
+.surv b { font-family: var(--f-num); color: var(--ink); font-size: 13px; }
+.surv.risk b { color: var(--loss); }
+.chip {
+  display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--rule); color: var(--ink-2); background: var(--card); white-space: nowrap;
+}
+.chip.up { color: var(--win); background: var(--win-w); border-color: transparent; }
+.chip.down { color: var(--loss); background: var(--loss-w); border-color: transparent; }
+.chip.inj { color: var(--loss); border-color: var(--loss); }
+.chip.est { color: var(--warn); background: var(--warn-w); border-color: transparent; }
+.chip.k { color: var(--sec); border-color: var(--sec); }
+@media (max-width: 640px) {
+  .rec { grid-template-columns: 22px minmax(0, 1fr) auto; }
+  .rec .gain { grid-column: 2; }
+  .rec .surv { grid-column: 3; grid-row: 2; text-align: right; }
+  .rec .act { grid-column: 3; grid-row: 1; }
+}
+
+/* ---- your team ----------------------------------------------------------- */
+.mine-sum { display: flex; gap: var(--s5); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--rule-2); flex-wrap: wrap; }
+.stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.stat .v { font-family: var(--f-num); font-size: 22px; font-weight: 600; }
+.cats { display: grid; gap: 2px; padding: var(--s2) var(--s4) var(--s3); }
+.cat {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) 44px 36px auto; gap: var(--s2);
+  align-items: center; font-size: 12.5px;
+}
+.cat .lab { font-weight: 700; }
+.cat .pct { font-family: var(--f-num); text-align: right; }
+.cat .rk { font-family: var(--f-num); color: var(--muted); text-align: right; font-size: 12px; }
+.pbar { position: relative; height: 10px; background: var(--sunken); border-radius: 3px; }
+.pbar > i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 3px; background: var(--faint); }
+.pbar > i.good { background: var(--win); }
+.pbar > i.bad { background: var(--loss); }
+.pbar::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--ink-2); opacity: .5; }
+.cat.punted { opacity: .45; }
+.punt { font-size: 11px; display: inline-flex; gap: 3px; align-items: center; color: var(--muted); cursor: pointer; }
+.roster { border-top: 1px solid var(--rule-2); padding: var(--s3) var(--s4); display: grid; gap: 3px; }
+.slotrow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: var(--s2); font-size: 13px; align-items: baseline; }
+.slotrow .sl { font-family: var(--f-num); font-size: 11.5px; color: var(--muted); }
+.slotrow.open .pn { color: var(--faint); font-style: italic; }
+
+/* ---- tabs, tables ------------------------------------------------------ */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule); margin-bottom: var(--s3); flex-wrap: wrap; }
+.tab {
+  border: 0; background: none; padding: 8px 14px; cursor: pointer; font-weight: 700; color: var(--muted);
+  border-bottom: 3px solid transparent; margin-bottom: -1px; font-size: 13px;
+}
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--sec); }
+.scroll-x { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--rule-2); white-space: nowrap; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; background: var(--card); }
+td.r, th.r { text-align: right; }
+tr.taken td { color: var(--faint); text-decoration: line-through; }
+.board td, .board th { border: 1px solid var(--rule-2); vertical-align: top; }
+.board th { position: sticky; top: 0; text-align: center; min-width: 96px; white-space: normal; line-height: 1.2; }
+.board th.me, .board td.me { background: var(--me-w); }
+.board th.me { color: var(--me); }
+.board td { height: 40px; min-width: 96px; max-width: 120px; white-space: normal; line-height: 1.2; cursor: default; }
+.board .pk { display: block; cursor: pointer; border-radius: 3px; }
+.board .pk + .pk, .board .pk + .q, .board .q + .pk { margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--rule); }
+.board .pk:hover { background: var(--sunken); }
+.board td.now { outline: 2px solid var(--sec); outline-offset: -2px; background: var(--sec-w); }
+.board td .q { display: block; }
+.board td .p { font-weight: 600; font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; }
+.board td .q { font-size: 10.5px; color: var(--muted); font-family: var(--f-num); }
+.board .rd { font-family: var(--f-num); color: var(--muted); text-align: center; min-width: 34px; width: 34px; }
+.filters { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s3); }
+.filters input[type="search"], select { border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 8px; background: var(--card); }
+.edit-bar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; padding: var(--s2) var(--s3); margin-bottom: var(--s3); border: 1px solid var(--sec); background: var(--sec-w); border-radius: var(--r); }
+.teamcard { padding: var(--s3) var(--s4); }
+.teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: var(--s3); margin-top: var(--s4); }
+.teamcard h3 { font-size: 14px; display: flex; justify-content: space-between; gap: var(--s2); }
+.teamcard ol { margin: var(--s2) 0 0; padding-left: 20px; font-size: 12.5px; }
+.rkc { display: inline-block; min-width: 22px; text-align: center; font-family: var(--f-num); font-size: 11.5px; border-radius: 3px; padding: 1px 2px; }
+.rkc.g { background: var(--win-w); color: var(--win); }
+.rkc.b { background: var(--loss-w); color: var(--loss); }
+
+/* ---- setup dialog -------------------------------------------------------- */
+dialog {
+  border: 1px solid var(--rule); border-radius: 10px; padding: 0; width: min(760px, calc(100vw - 32px));
+  background: var(--card); color: var(--ink); box-shadow: var(--shadow);
+}
+dialog::backdrop { background: rgba(10, 14, 20, .45); }
+.dlg-head { display: flex; justify-content: space-between; align-items: center; padding: var(--s4) var(--s5); border-bottom: 1px solid var(--rule); }
+.dlg-body { padding: var(--s4) var(--s5); display: grid; gap: var(--s5); max-height: 70vh; overflow-y: auto; }
+.dlg-foot { display: flex; justify-content: space-between; gap: var(--s2); padding: var(--s3) var(--s5); border-top: 1px solid var(--rule); flex-wrap: wrap; }
+fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: var(--s2); min-width: 0; }
+legend { font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin-bottom: var(--s2); }
+.help { font-size: 12.5px; color: var(--muted); margin: 0; }
+.keepers { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 92px; gap: var(--s2); align-items: center; }
+.keepers input, .keepers select, .order input, .row input, .row select { border: 1px solid var(--rule); border-radius: var(--r); padding: 6px 8px; background: var(--card); width: 100%; min-width: 0; }
+.keepers .bad { border-color: var(--loss); }
+.order { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: var(--s2); align-items: center; }
+.order .pos { font-family: var(--f-num); color: var(--muted); text-align: right; }
+.row { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+.row label { display: inline-flex; gap: 6px; align-items: center; }
+textarea { width: 100%; min-height: 70px; border: 1px solid var(--rule); border-radius: var(--r); padding: 8px; background: var(--card); font-family: var(--f-num); font-size: 12px; }
+
+/* ---- toast, footer ------------------------------------------------------- */
+#toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 20;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--ink); color: var(--paper); border-radius: var(--r); padding: 10px 14px;
+  display: flex; gap: var(--s3); align-items: center; box-shadow: var(--shadow); max-width: calc(100vw - 32px);
+}
+#toast button { background: none; border: 1px solid currentColor; color: inherit; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: 700; }
+.foot { padding-block: var(--s5) var(--s6); color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--rule); display: grid; gap: var(--s2); }
+.foot p { margin: 0; max-width: 95ch; }
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="wrap band-in">
+    <div>
+      <span class="eyebrow">The Bubble 2.0 · 2026-27 · 9-cat head-to-head</span>
+      <h1>Draft Room</h1>
+    </div>
+    <div class="clock" id="clock" aria-live="polite"></div>
+    <div class="actions">
+      <span class="sync" id="sync-wrap" hidden>
+        <span class="dot" id="sync-dot"></span>
+        <button class="btn" id="sync-btn" type="button">Sync from ESPN</button>
+        <label class="punt"><input type="checkbox" id="auto-sync"> every 5s</label>
+      </span>
+      <button class="btn" id="undo-btn" type="button" title="Undo the last pick you entered (Ctrl+Z)">Undo</button>
+      <button class="btn" id="setup-btn" type="button">Setup</button>
+    </div>
+  </div>
+</header>
+
+<div class="entry-bar" id="entry-bar">
+  <div class="wrap entry-row">
+    <div class="entry-for" id="entry-for"></div>
+    <div class="entry">
+      <input id="pick-input" type="text" autocomplete="off" spellcheck="false"
+             aria-label="Player taken at this pick" aria-controls="suggest" aria-expanded="false"
+             placeholder="Type who was picked, then Enter">
+      <ul id="suggest" role="listbox" hidden></ul>
+    </div>
+    <span class="faint hints"><span class="kbd">/</span> focus · <span class="kbd">↑↓</span> choose · <span class="kbd">Enter</span> draft</span>
+  </div>
+</div>
+
+<main class="wrap grid">
+  <section style="min-width:0">
+    <div id="first-run"></div>
+    <div class="sec-head"><h2>Your call sheet</h2><span class="sub" id="recs-sub"></span></div>
+    <div class="panel"><ol id="recs"></ol></div>
+  </section>
+
+  <aside style="min-width:0">
+    <div class="sec-head"><h2>Your team</h2><span class="sub" id="mine-sub"></span></div>
+    <div class="panel" id="mine"></div>
+  </aside>
+
+  <section class="lower">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-board" aria-selected="true" type="button">Board</button>
+      <button class="tab" role="tab" id="tab-players" aria-selected="false" type="button">Players</button>
+      <button class="tab" role="tab" id="tab-teams" aria-selected="false" type="button">Teams</button>
+    </div>
+    <div id="pane-board"></div>
+    <div id="pane-players" hidden>
+      <div class="filters">
+        <input type="search" id="pl-q" placeholder="Filter by name" aria-label="Filter players by name">
+        <select id="pl-pos" aria-label="Position">
+          <option value="">All positions</option><option>PG</option><option>SG</option>
+          <option>SF</option><option>PF</option><option>C</option>
+        </select>
+        <select id="pl-sort" aria-label="Sort by">
+          <option value="gain">Sort: gain for you</option>
+          <option value="adp">Sort: ESPN rank</option>
+          <option value="value">Sort: projection value</option>
+        </select>
+        <label class="punt"><input type="checkbox" id="pl-taken"> show drafted</label>
+      </div>
+      <div class="panel scroll-x" id="pl-table"></div>
+    </div>
+    <div id="pane-teams" hidden></div>
+  </section>
+</main>
+
+<footer class="wrap foot" id="foot"></footer>
+
+<dialog id="setup" aria-labelledby="setup-h">
+  <form method="dialog" id="setup-form">
+    <div class="dlg-head"><h2 id="setup-h">Draft setup</h2><button class="btn small" value="cancel" type="submit">Close</button></div>
+    <div class="dlg-body">
+      <fieldset>
+        <legend>Draft order</legend>
+        <p class="help">Team names in round-1 order. Mark which one is you. Paste a list of 12 names, one per line, into the box below to fill them all at once.</p>
+        <div id="order-rows" style="display:grid;gap:6px"></div>
+        <textarea id="order-paste" placeholder="Paste team names here, one per line, in draft order" aria-label="Paste team names"></textarea>
+        <div class="row">
+          <button class="btn small" type="button" id="order-apply">Use pasted names</button>
+          <label>Rounds <select id="rounds"></select></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Keepers</legend>
+        <p class="help">Each team's keeper and the round it uses up. That team's pick in that round is filled before the draft starts.</p>
+        <div class="keepers" id="keeper-rows"></div>
+        <datalist id="all-players"></datalist>
+      </fieldset>
+      <fieldset>
+        <legend>Projections and strategy</legend>
+        <div class="row">
+          <label><input type="radio" name="board" value="projected" id="board-projected"> Model projection for 2026-27</label>
+          <label><input type="radio" name="board" value="blend" id="board-blend"> Last three seasons, weighted</label>
+        </div>
+        <div class="row">
+          <label>Rank the call sheet by
+            <select id="rank-by">
+              <option value="gain">categories won for your team (recommended)</option>
+              <option value="value">plain board value</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label>When a player will probably still be there next turn
+            <select id="lambda">
+              <option value="0">rank by gain only</option>
+              <option value="0.5">lean toward taking him later</option>
+              <option value="1">fully wait for him</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Backup</legend>
+        <p class="help">The draft saves in this browser as you go. To move it to another device, copy it here and paste it there.</p>
+        <div class="row">
+          <button class="btn small" type="button" id="copy-state">Copy draft state</button>
+          <span id="copy-msg" class="help"></span>
+        </div>
+        <textarea id="import-state" placeholder="Paste a copied draft state here" aria-label="Paste draft state"></textarea>
+        <div class="row">
+          <button class="btn small" type="button" id="load-state">Load pasted state</button>
+          <button class="btn small danger" type="button" id="clear-picks">Clear all picks</button>
+        </div>
+      </fieldset>
+    </div>
+    <div class="dlg-foot">
+      <span class="help" id="setup-msg"></span>
+      <button class="btn primary" type="button" id="setup-save">Save setup</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" hidden></div>
+
+<!-- DATA -->
+<script src="/static/draft_engine.js"></script>
+<script>
+"use strict";
+const E = window.DraftEngine;
+const CATS = E.CATS, LABEL = E.CAT_LABEL;
+const BASE_POS = ["PG", "SG", "SF", "PF", "C"];
+const STORE_KEY = "bubble-draft-room-v1";
+const N_TEAMS = 12;
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+function defaultState() {
+  return {
+    teams: Array.from({ length: N_TEAMS }, (_, i) => (i === 3 ? "You" : `Team ${i + 1}`)),
+    me: 3, rounds: 14, board: "projected", lambda: E.LAMBDA,
+    keepers: [],        // {team, playerId, round, name}
+    picks: {},          // overall -> playerId
+    keeperFlags: {},    // overall -> true, for picks ESPN marks as keepers
+    log: [],            // overalls in the order they were entered, for Undo
+    names: {},          // playerId -> name, so a pick shows even off-board
+    extra: [],          // rows for players not on the board
+    punt: {}, owners: null, espnSyncedAt: null, rankBy: "gain",
+  };
+}
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+    return s && Array.isArray(s.teams) ? { ...defaultState(), ...s } : null;
+  } catch { return null; }
+}
+function saveState() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* private window */ }
+}
+let state = loadState() || defaultState();
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+let BOARDS = {}, META = {}, players = [], byId = new Map(), result = null;
+
+async function loadData() {
+  if (window.DRAFT_DATA) {
+    BOARDS = window.DRAFT_DATA.boards;
+    META = window.DRAFT_DATA.meta || {};
+    return;
+  }
+  // Served by the local app: read the boards it serves.
+  const get = async (w) => {
+    const r = await fetch(`/api/fantasy/draft-board?window=${w}&limit=2000&unranked=1`);
+    if (!r.ok) throw new Error(`${w} board: ${r.status}`);
+    const j = await r.json();
+    META[w] = { generated: j.generated, source: j.source };
+    return j.rows.concat(j.unranked || []);
+  };
+  const [projected, blend] = await Promise.all([get("projected"), get("blend").catch(() => null)]);
+  BOARDS = { projected };
+  if (blend) BOARDS.blend = blend;
+}
+
+function buildPlayers() {
+  const rows = (BOARDS[state.board] || BOARDS.projected).concat(state.extra);
+  players = E.prepareBoard(rows);
+  byId = new Map(players.map((p) => [p.id, p]));
+  for (const p of players) state.names[p.id] ||= p.name;
+}
+
+function nameOf(id) { return (byId.get(id) || {}).name || state.names[id] || id; }
+function lastName(n) { const parts = n.split(" "); return parts.length > 1 ? parts.slice(1).join(" ") : n; }
+function basePos(p) { return p.pos.filter((x) => BASE_POS.includes(x)).join("/") || "UT"; }
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function ordinal(n) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+function f1(x) { return Number.isFinite(x) ? x.toFixed(1) : "–"; }
+function f3(x) { return Number.isFinite(x) ? x.toFixed(3).replace(/^0/, "") : "–"; }
+function signed(x, d = 2) {
+  const s = Math.abs(x).toFixed(d);
+  return (+s === 0 ? "" : x > 0 ? "+" : "−") + s;
+}
+
+// ---------------------------------------------------------------------------
+// Draft mechanics
+// ---------------------------------------------------------------------------
+function currentSlots() {
+  const pickedIds = new Set(Object.values(state.picks));
+  const keepers = state.keepers.filter((k) => k.playerId && !pickedIds.has(k.playerId));
+  const picks = Object.entries(state.picks).map(([o, id]) => ({ overall: +o, playerId: id }));
+  const slots = E.buildSlots({ nTeams: N_TEAMS, rounds: state.rounds, keepers, picks,
+                               owners: state.owners });
+  for (const s of slots) if (state.keeperFlags[s.overall]) s.keeper = true;
+  return slots;
+}
+
+function recompute() {
+  const slots = currentSlots();
+  result = E.recommend({ players, slots, me: state.me, nTeams: N_TEAMS,
+                         punt: state.punt, lambda: state.lambda });
+  result.slots = slots;
+  result.gainById = new Map((result.candidates || []).map((c) => [c.player.id, c]));
+}
+
+function takenIds() { return new Set(result.slots.filter((s) => s.playerId != null).map((s) => s.playerId)); }
+
+function draftPlayer(id) {
+  if (!result || result.done) return;
+  const overall = result.current;
+  state.picks[overall] = id;
+  state.names[id] = nameOf(id);
+  state.log.push(overall);
+  const team = state.teams[result.onClock.team];
+  saveState();
+  refresh();
+  toast(`${nameOf(id)} → ${team} (pick ${overall})`, true);
+}
+
+function undo() {
+  const overall = state.log.pop();
+  if (overall == null) { toast("Nothing to undo. Picks synced from ESPN are undone in ESPN."); return; }
+  const id = state.picks[overall];
+  delete state.picks[overall];
+  delete state.keeperFlags[overall];
+  saveState();
+  refresh();
+  toast(`Removed pick ${overall}: ${nameOf(id)}`);
+}
+
+function removePick(overall) {
+  delete state.picks[overall];
+  delete state.keeperFlags[overall];
+  state.log = state.log.filter((o) => o !== overall);
+  saveState();
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+let tab = "board", editOverall = null;
+
+function refresh() {
+  recompute();
+  renderClock();
+  renderRecs();
+  renderMine();
+  renderTab();
+  renderFoot();
+  renderSuggest();
+  renderFirstRun();
+}
+
+function renderClock() {
+  const r = result, clock = $("clock"), bar = $("entry-bar"), input = $("pick-input");
+  if (r.done) {
+    clock.innerHTML = `<div><div class="lbl">Draft</div><div class="big">Complete</div></div>`;
+    $("entry-for").innerHTML = "All picks are in.";
+    input.disabled = true;
+    bar.classList.remove("mine");
+    return;
+  }
+  input.disabled = false;
+  const team = state.teams[r.onClock.team];
+  const mine = r.myTurn;
+  clock.classList.toggle("mine", mine);
+  bar.classList.toggle("mine", mine);
+  const next = r.myNext
+    ? (mine ? `<span class="onclock-pill">You're on the clock</span>`
+            : `Your pick: <b class="num">#${r.myNext.overall}</b> · in ${r.picksUntilMine}`)
+    : "No picks left for you";
+  clock.innerHTML = `
+    <div><div class="lbl">Pick</div><div class="big">${r.current}</div></div>
+    <div><div class="lbl">Round ${r.round} of ${state.rounds}</div>
+         <div class="who">${esc(team)}</div><div class="sub">${next}</div></div>`;
+  $("entry-for").innerHTML = `Pick <b class="num">${r.current}</b> for <b>${esc(team)}</b>`;
+  input.placeholder = mine ? "Type your pick, then Enter" : `Type who ${team} took, then Enter`;
+}
+
+function whyChips(c) {
+  const d = CATS.map((cat, i) => ({ cat, v: c.catDelta[i] })).filter((x) => !state.punt[x.cat]);
+  const ups = d.filter((x) => x.v > 0.008).sort((a, b) => b.v - a.v).slice(0, 3);
+  const downs = d.filter((x) => x.v < -0.008).sort((a, b) => a.v - b.v).slice(0, 2);
+  return ups.map((x) => `<span class="chip up" title="Raises your chance of winning ${LABEL[x.cat]} by ${(x.v * 100).toFixed(1)} points over the player expected at this pick">+${LABEL[x.cat]}</span>`).join("")
+    + downs.map((x) => `<span class="chip down" title="Lowers your chance of winning ${LABEL[x.cat]} by ${(-x.v * 100).toFixed(1)} points against the player expected at this pick">−${LABEL[x.cat]}</span>`).join("");
+}
+
+function flags(p) {
+  let s = "";
+  if (p.est) s += `<span class="chip est" title="No NBA stats yet: priced from the players around his ESPN rank">rookie est.</span> `;
+  if (p.inj) s += `<span class="chip inj" title="ESPN status when the board was built">${esc(p.inj.replace(/_/g, " ").toLowerCase())}</span> `;
+  return s;
+}
+
+function statLine(p) {
+  const l = p.line;
+  const fg = l.fga ? l.fgm / l.fga : NaN, ft = l.fta ? l.ftm / l.fta : NaN;
+  return `${f1(l.pts)} pts · ${f1(l.reb)} reb · ${f1(l.ast)} ast · ${f1(l.stl)} stl · ${f1(l.blk)} blk · `
+    + `${f1(l.fg3m)} 3pm · ${f3(fg)} fg · ${f3(ft)} ft · ${f1(l.turnover)} to · `
+    + (p.est ? "estimate" : `${Math.round(p.gp)} gp`);
+}
+
+function renderRecs() {
+  const r = result, box = $("recs");
+  if (r.done || !r.myNext) {
+    $("recs-sub").textContent = r.done ? "The draft is complete." : "You have no picks left.";
+    box.innerHTML = "";
+    return;
+  }
+  const pool = r.candidates.filter((c) => c.feasible);
+  if (state.rankBy === "value") pool.sort((a, b) => (b.player.value || -99) - (a.player.value || -99));
+  const list = pool.slice(0, 10);
+  const top = Math.max(0.01, ...list.map((c) => c.gain));
+  $("recs-sub").textContent = (state.rankBy === "value" ? "Ranked by board value. " : "") + (r.myTurn
+    ? `Ranked for pick ${r.current}. % = chance he is still there at your next pick${r.horizon ? ` (${r.horizon} picks away)` : ""}.`
+    : `Ranked for your pick at #${r.myNext.overall}. % = chance he reaches you.`);
+  box.innerHTML = list.map((c, i) => {
+    const p = c.player, s = c.pSurvive;
+    const risk = r.myTurn ? s < 0.35 : s < 0.5;
+    return `<li class="rec${i === 0 ? " top" : ""}">
+      <span class="n">${i + 1}</span>
+      <div class="who"><span class="nm">${esc(p.name)}</span><span class="meta">${esc(p.team)} · ${basePos(p)} · ESPN #${Number.isFinite(p.adp) ? p.adp : "–"}</span>
+        <div class="why">${flags(p)}${whyChips(c)}</div></div>
+      <div class="gain"><span class="v">${signed(c.gain)} <small>cats/wk</small></span>
+        <span class="bar"><i style="width:${Math.max(2, Math.min(100, 100 * c.gain / top))}%"></i></span></div>
+      <div class="surv${risk ? " risk" : ""}"><b>${Math.round(100 * s)}%</b><br>${r.myTurn ? "there next turn" : "reaches you"}</div>
+      <div class="act"><button class="btn small ${r.myTurn ? "me" : ""}" data-draft="${esc(p.id)}" type="button">${r.myTurn ? "Draft" : "Mark taken"}</button></div>
+      <div class="line mono">${statLine(p)}</div>
+    </li>`;
+  }).join("");
+}
+
+function renderMine() {
+  const r = result, me = state.me;
+  const st = r.standings.find((x) => x.team === me);
+  const rank = 1 + r.standings.filter((x) => x.catWins > st.catWins).length;
+  const roster = r.rosters[me];
+  const active = CATS.filter((c) => !state.punt[c]).length;
+  $("mine-sub").textContent = `${state.teams[me]} · picks ${ordinal(me + 1)}`;
+  const outlook = r.myCats || CATS.map((c, i) => ({ cat: c, label: LABEL[c], pWin: NaN }));
+  const cats = outlook.map((c, i) => {
+    const p = c.pWin, cls = p > 0.55 ? "good" : p < 0.45 ? "bad" : "";
+    const punted = !!state.punt[c.cat];
+    return `<div class="cat${punted ? " punted" : ""}">
+      <span class="lab">${c.label}</span>
+      <span class="pbar" title="Average chance of winning ${c.label} in a week against the other 11 teams"><i class="${cls}" style="width:${Number.isFinite(p) ? (100 * p).toFixed(1) : 0}%"></i></span>
+      <span class="pct">${Number.isFinite(p) ? Math.round(100 * p) + "%" : "–"}</span>
+      <span class="rk" title="Your rank among 12 in this category">${ordinal(st.catRank[i])}</span>
+      <label class="punt"><input type="checkbox" data-punt="${c.cat}" ${punted ? "checked" : ""}> punt</label>
+    </div>`;
+  }).join("");
+  const m = E.matchSlots(roster);
+  const slotRows = E.SLOTS.map((sl, s) => {
+    const pi = m.owner[s];
+    return pi >= 0
+      ? `<div class="slotrow"><span class="sl">${sl}</span><span class="pn">${esc(roster[pi].name)}</span><span class="faint mono" style="font-size:11px">${basePos(roster[pi])}</span></div>`
+      : `<div class="slotrow open"><span class="sl">${sl}</span><span class="pn">open</span><span></span></div>`;
+  }).join("");
+  const benched = roster.filter((_, i) => !m.owner.includes(i));
+  const bench = benched.map((p) => `<div class="slotrow"><span class="sl">BE</span><span class="pn">${esc(p.name)}</span><span class="faint mono" style="font-size:11px">${basePos(p)}</span></div>`).join("");
+  $("mine").innerHTML = `
+    <div class="mine-sum">
+      <div class="stat"><div class="k">Projected</div><div class="v">${st.catWins.toFixed(1)}<span class="faint" style="font-size:14px"> / ${active}</span></div><div class="sub">categories won per week</div></div>
+      <div class="stat"><div class="k">League rank</div><div class="v">${ordinal(rank)}</div><div class="sub">of ${N_TEAMS}, on that measure</div></div>
+    </div>
+    <div class="cats">${cats}</div>
+    <div class="roster">${slotRows}${bench}</div>
+    <p class="help" style="padding:0 16px 12px">Every team's unmade picks are filled with the player ESPN's ranking expects there, so these numbers compare finished rosters.</p>`;
+}
+
+function renderTab() {
+  for (const t of ["board", "players", "teams"]) {
+    $("tab-" + t).setAttribute("aria-selected", String(tab === t));
+    $("pane-" + t).hidden = tab !== t;
+  }
+  if (tab === "board") renderBoard();
+  else if (tab === "players") renderPlayers();
+  else renderTeams();
+}
+
+function renderBoard() {
+  const slots = result.slots, me = state.me;
+  const cur = result.done ? -1 : result.current;
+  let edit = "";
+  if (editOverall != null && state.picks[editOverall] == null && !slots[editOverall - 1].keeper) editOverall = null;
+  if (editOverall != null) {
+    const s = slots[editOverall - 1];
+    const fromKeeper = s.keeper && state.picks[editOverall] == null;
+    edit = `<div class="edit-bar"><span>Pick ${s.overall}: <b>${esc(nameOf(s.playerId))}</b> to ${esc(state.teams[s.team])}</span>
+      ${fromKeeper ? `<span class="help">This is a keeper. Change it in Setup.</span>`
+                   : `<button class="btn small danger" type="button" data-remove="${s.overall}">Remove this pick</button>`}
+      <button class="btn small" type="button" data-remove="">Cancel</button></div>`;
+  }
+  // Columns are draft positions, so each column is one team all the way down.
+  const head = state.teams.map((t, i) => `<th class="${i === me ? "me" : ""}">${esc(t)}<br><span class="faint mono" style="font-size:10px">${ordinal(i + 1)}</span></th>`).join("");
+  const rows = [];
+  for (let rd = 1; rd <= state.rounds; rd++) {
+    // A traded pick can give a team two slots in one round (and another
+    // team none), so a cell holds a list.
+    const cells = Array.from({ length: N_TEAMS }, () => []);
+    for (const s of slots) if (s.round === rd) cells[s.team].push(s);
+    rows.push(`<tr><td class="rd">${rd}</td>${cells.map((list, t) => {
+      const cls = [t === me ? "me" : "", list.some((s) => s.overall === cur) ? "now" : ""].join(" ");
+      const inner = list.map((s) => {
+        if (!s.playerId) return `<span class="q">#${s.overall}</span>`;
+        const p = byId.get(s.playerId);
+        return `<span class="pk" data-cell="${s.overall}"><span class="p">${esc(lastName(nameOf(s.playerId)))}</span><span class="q">#${s.overall} ${p ? basePos(p) : ""}${s.keeper ? ' <span class="chip k">K</span>' : ""}</span></span>`;
+      }).join("");
+      return `<td class="${cls}">${inner}</td>`;
+    }).join("")}</tr>`);
+  }
+  $("pane-board").innerHTML = `${edit}<div class="panel scroll-x"><table class="board"><thead><tr><th class="rd">Rd</th>${head}</tr></thead><tbody>${rows.join("")}</tbody></table></div>
+    <p class="help" style="margin-top:8px">Click a filled pick to remove it. The earliest empty pick is always the one on the clock.</p>`;
+}
+
+function renderPlayers() {
+  const q = norm($("pl-q").value), pos = $("pl-pos").value, sort = $("pl-sort").value, showTaken = $("pl-taken").checked;
+  const taken = takenIds();
+  let list = players.filter((p) => (showTaken || !taken.has(p.id)) && (!pos || p.pos.includes(pos)) && (!q || norm(p.name).includes(q)));
+  const g = (p) => (result.gainById.get(p.id) || {}).gain ?? -Infinity;
+  list.sort(sort === "adp" ? (a, b) => E.adpKey(a) - E.adpKey(b)
+          : sort === "value" ? (a, b) => (b.value || -99) - (a.value || -99)
+          : (a, b) => g(b) - g(a));
+  list = list.slice(0, 200);
+  const canDraft = !result.done;
+  const rows = list.map((p) => {
+    const l = p.line, c = result.gainById.get(p.id), t = taken.has(p.id);
+    return `<tr class="${t ? "taken" : ""}">
+      <td class="r num">${Number.isFinite(p.adp) ? p.adp : "–"}</td>
+      <td><b>${esc(p.name)}</b> ${flags(p)}</td><td>${esc(p.team)}</td><td>${basePos(p)}</td>
+      <td class="r num">${p.est ? "est" : Math.round(p.gp)}</td>
+      <td class="r num">${f1(l.pts)}</td><td class="r num">${f1(l.reb)}</td><td class="r num">${f1(l.ast)}</td>
+      <td class="r num">${f1(l.stl)}</td><td class="r num">${f1(l.blk)}</td><td class="r num">${f1(l.fg3m)}</td>
+      <td class="r num">${f3(l.fga ? l.fgm / l.fga : NaN)}</td><td class="r num">${f3(l.fta ? l.ftm / l.fta : NaN)}</td>
+      <td class="r num">${f1(l.turnover)}</td>
+      <td class="r num">${Number.isFinite(p.value) ? p.value.toFixed(2) : "–"}</td>
+      <td class="r num">${c && !t ? signed(c.gain) : "–"}</td>
+      <td>${!t && canDraft ? `<button class="btn small" type="button" data-draft="${esc(p.id)}">Pick</button>` : ""}</td></tr>`;
+  }).join("");
+  $("pl-table").innerHTML = `<table><thead><tr><th class="r">ESPN</th><th>Player</th><th>Team</th><th>Pos</th><th class="r">GP</th>
+    <th class="r">PTS</th><th class="r">REB</th><th class="r">AST</th><th class="r">STL</th><th class="r">BLK</th><th class="r">3PM</th>
+    <th class="r">FG%</th><th class="r">FT%</th><th class="r">TO</th><th class="r" title="Draft-board value: sum of category z-scores x availability">Value</th>
+    <th class="r" title="Expected categories won per week, added at your next pick">Gain</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderTeams() {
+  const r = result;
+  const order = r.standings.slice().sort((a, b) => b.catWins - a.catWins);
+  const head = CATS.map((c) => `<th class="r">${LABEL[c]}</th>`).join("");
+  const rows = order.map((s, i) => `<tr${s.team === state.me ? ' style="background:var(--me-w)"' : ""}>
+    <td class="r num">${i + 1}</td><td><b>${esc(state.teams[s.team])}</b></td>
+    <td class="r num">${r.rosters[s.team].length}</td>
+    <td class="r num">${s.catWins.toFixed(2)}</td>
+    ${s.catRank.map((k) => `<td class="r"><span class="rkc ${k <= 3 ? "g" : k >= 10 ? "b" : ""}">${k}</span></td>`).join("")}</tr>`).join("");
+  const cards = state.teams.map((t, i) => {
+    const ros = result.slots.filter((s) => s.team === i && s.playerId);
+    return `<div class="panel teamcard"><h3><span>${esc(t)}</span><span class="faint mono" style="font-size:12px">${ordinal(i + 1)}</span></h3>
+      <ol>${ros.map((s) => `<li>${esc(nameOf(s.playerId))} <span class="faint mono" style="font-size:11px">#${s.overall}${s.keeper ? " K" : ""}</span></li>`).join("") || '<li class="faint" style="list-style:none;margin-left:-20px">No picks yet</li>'}</ol></div>`;
+  }).join("");
+  $("pane-teams").innerHTML = `<div class="panel scroll-x"><table><thead><tr><th class="r">#</th><th>Team</th><th class="r">Players</th>
+    <th class="r" title="Expected categories won per week against the other 11, with unmade picks filled by ESPN rank">Cats/wk</th>${head}</tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="help" style="margin-top:8px">Category columns are each team's projected rank among 12 (1 = best; fewest turnovers is best). Green is top 3, red bottom 3.</p>
+    <div class="teams-grid">${cards}</div>`;
+}
+
+function renderFoot() {
+  const meta = (window.DRAFT_DATA && window.DRAFT_DATA.meta) || META;
+  const m = meta[state.board] || {};
+  const label = state.board === "projected" ? "model projection for 2026-27" : "last three seasons, weighted 0.60 / 0.30 / 0.10";
+  $("foot").innerHTML = `
+    <p><b>Players:</b> ${esc(label)}${m.generated ? `, built ${esc(String(m.generated).slice(0, 10))}` : ""}. Injury tags are ESPN's as of that build. Rookies without NBA stats are priced from the players around their ESPN rank and marked <span class="chip est">rookie est.</span></p>
+    <p><b>How picks are ranked:</b> each available player is scored by how many more categories a week he would win you, against each of the other 11 rosters as they stand, with every team's remaining picks filled by ESPN's ranking. Green and red chips compare him with the player you would otherwise expect at that pick, not with zero. The percentage is the chance he lasts to your next turn if the other teams pick by ESPN rank with normal variation.</p>
+    <p><b>Tested:</b> in 200 simulated drafts from the 4th slot, with the other teams drafting by ESPN rank, this ranking beat taking the top board value in 158 of 200 drafts when seasons were scored on z-scores and 177 of 200 when scored on weekly stat lines. Against teams drafting from these same projections it still won 79 of 100 on stat lines, but lost on z-scores (won 32 of 100). The simulations treat the projections as the truth, so they cannot tell you whether the projections are right.</p>
+    ${state.espnSyncedAt ? `<p>Last ESPN sync ${esc(new Date(state.espnSyncedAt).toLocaleTimeString())}.</p>` : ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// Pick entry: type-ahead over available players
+// ---------------------------------------------------------------------------
+let sugg = [], suggIdx = 0;
+// Hyphens split words, so "sga" finds Gilgeous-Alexander by his initials.
+function norm(s) { return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/-/g, " ").replace(/[^a-z0-9 ]/g, ""); }
+
+function matchScore(p, q) {
+  const n = norm(p.name), parts = n.split(" ");
+  if (n.startsWith(q)) return 0;
+  if (parts.some((w, i) => i > 0 && w.startsWith(q))) return 1;
+  const initials = parts.map((w) => w[0]).join("");
+  if (q.length >= 2 && initials.startsWith(q.replace(/ /g, ""))) return 1.5;
+  if (n.includes(q)) return 2;
+  const qs = q.split(" ").filter(Boolean);
+  if (qs.length > 1 && qs.every((t) => parts.some((w) => w.startsWith(t)))) return 2.5;
+  return -1;
+}
+
+function renderSuggest() {
+  const input = $("pick-input"), list = $("suggest");
+  const q = norm(input.value.trim());
+  if (!q || !result || result.done) { list.hidden = true; input.setAttribute("aria-expanded", "false"); sugg = []; return; }
+  const taken = takenIds();
+  sugg = players.filter((p) => !taken.has(p.id))
+    .map((p) => ({ p, s: matchScore(p, q) })).filter((x) => x.s >= 0)
+    .sort((a, b) => a.s - b.s || E.adpKey(a.p) - E.adpKey(b.p)).slice(0, 8).map((x) => x.p);
+  suggIdx = Math.min(suggIdx, Math.max(0, sugg.length));
+  const items = sugg.map((p, i) => {
+    const c = result.gainById.get(p.id);
+    return `<li role="option" id="sg-${i}" aria-selected="${i === suggIdx}" data-i="${i}">
+      <span><span class="sname">${esc(p.name)}</span> <span class="smeta">${esc(p.team)} · ${basePos(p)}</span> ${flags(p)}</span>
+      <span class="smeta mono">ESPN #${Number.isFinite(p.adp) ? p.adp : "–"}</span>
+      <span class="smeta mono">${c ? signed(c.gain) : ""}</span></li>`;
+  });
+  items.push(`<li role="option" id="sg-${sugg.length}" aria-selected="${suggIdx === sugg.length}" data-i="${sugg.length}">
+      <span class="smeta">Not listed? Add “${esc(input.value.trim())}” as an unlisted player</span><span></span><span></span></li>`);
+  list.innerHTML = items.join("");
+  list.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+  input.setAttribute("aria-activedescendant", `sg-${suggIdx}`);
+}
+
+function chooseSuggestion(i) {
+  const input = $("pick-input");
+  if (i < sugg.length) {
+    draftPlayer(sugg[i].id);
+  } else {
+    const name = input.value.trim();
+    if (!name) return;
+    const row = { name, value_source: "unlisted", pos_str: "", pro_team: "", draft_rank: 250 };
+    state.extra.push(row);
+    buildPlayers();
+    draftPlayer(players.find((p) => p.name === name && p.est).id);
+  }
+  input.value = "";
+  suggIdx = 0;
+  renderSuggest();
+  input.focus();
+}
+
+// ---------------------------------------------------------------------------
+// ESPN sync (only when served by the local app with .env credentials)
+// ---------------------------------------------------------------------------
+let autoTimer = null;
+async function probeEspn() {
+  if (location.protocol === "file:") return;
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch("/api/fantasy/live-draft", { signal: ctl.signal });
+    clearTimeout(t);
+    if (!(r.headers.get("content-type") || "").includes("json")) return;
+    // Show the controls but do not apply: before the draft ESPN can still be
+    // echoing last season's order, and a silent sync would overwrite the
+    // order typed into Setup. One click applies it.
+    $("sync-wrap").hidden = false;
+    const ok = r.ok;
+    setSync(ok, ok ? "ESPN is reachable. Click to pull the order, keepers and picks."
+                   : ((await r.json()).detail || `ESPN answered ${r.status}`), true);
+  } catch { /* not served by the app: manual entry only */ }
+}
+
+async function syncEspn() {
+  try {
+    applyEspn(await fetch("/api/fantasy/live-draft"));
+  } catch (e) {
+    setSync(false, `ESPN sync failed: ${e.message}`);
+  }
+}
+
+async function applyEspn(r) {
+  const j = await r.json();
+  if (!r.ok) { setSync(false, j.detail || `ESPN sync failed (${r.status})`); return; }
+  const order = j.pick_order && j.pick_order.length ? j.pick_order
+    : j.picks.filter((p) => p.round === 1).map((p) => p.team_id);
+  if (order.length !== N_TEAMS) { setSync(false, `ESPN returned ${order.length} teams in the order; expected ${N_TEAMS}.`); return; }
+  const idx = new Map(order.map((id, i) => [id, i]));
+  const names = new Map(j.teams.map((t) => [t.team_id, t.name]));
+  state.teams = order.map((id) => names.get(id) || `Team ${id}`);
+  if (idx.has(j.my_team_id)) state.me = idx.get(j.my_team_id);
+  const maxRound = Math.max(0, ...j.picks.map((p) => p.round || 0));
+  if (maxRound) state.rounds = maxRound;
+  state.owners = j.picks.length === N_TEAMS * state.rounds
+    ? j.picks.map((p) => (idx.has(p.team_id) ? idx.get(p.team_id) : null)) : null;
+  let added = 0;
+  for (const p of j.picks) {
+    if (!p.espn_player_id) continue;
+    const id = "e" + p.espn_player_id;
+    if (!byId.has(id) && !state.extra.some((x) => +x.espn_id === p.espn_player_id)) {
+      state.extra.push({ name: `ESPN player ${p.espn_player_id}`, espn_id: p.espn_player_id,
+                         value_source: "unlisted", pos_str: "", pro_team: "", draft_rank: 250 });
+      added++;
+    }
+    if (state.picks[p.overall] !== id) state.picks[p.overall] = id;
+    if (p.keeper) state.keeperFlags[p.overall] = true;
+  }
+  if (added) buildPlayers();
+  state.espnSyncedAt = Date.now();
+  saveState();
+  refresh();
+  setSync(true, `Synced ${new Date().toLocaleTimeString()} · ${j.made} picks in ESPN`);
+  if (!autoTimer) toast(`Synced from ESPN: ${j.made} picks. ESPN has you picking ${ordinal(state.me + 1)}.`);
+}
+
+function setSync(ok, msg, quiet) {
+  $("sync-dot").className = "dot " + (ok ? "ok" : "err");
+  $("sync-btn").title = msg;
+  if (!ok && !quiet) toast(msg);
+}
+
+// ---------------------------------------------------------------------------
+// Setup dialog
+// ---------------------------------------------------------------------------
+function openSetup() {
+  $("order-rows").innerHTML = state.teams.map((t, i) => `<div class="order">
+      <span class="pos">${i + 1}</span>
+      <input id="team-${i}" value="${esc(t)}" aria-label="Team picking ${ordinal(i + 1)}">
+      <label class="punt"><input type="radio" name="me" value="${i}" ${i === state.me ? "checked" : ""}> me</label></div>`).join("");
+  $("rounds").innerHTML = Array.from({ length: 20 }, (_, i) => `<option${i + 1 === state.rounds ? " selected" : ""}>${i + 1}</option>`).join("");
+  $("all-players").innerHTML = players.slice().sort((a, b) => E.adpKey(a) - E.adpKey(b))
+    .map((p) => `<option value="${esc(p.name)}"></option>`).join("");
+  $("keeper-rows").innerHTML = `<span class="help"><b>Team</b></span><span class="help"><b>Keeper</b></span><span class="help"><b>Round</b></span>`
+    + state.teams.map((t, i) => {
+      const k = state.keepers.find((x) => x.team === i) || {};
+      return `<span>${esc(t)}</span>
+        <input id="keep-${i}" list="all-players" value="${esc(k.name || "")}" placeholder="No keeper" aria-label="Keeper for ${esc(t)}">
+        <select id="keepr-${i}" aria-label="Keeper round for ${esc(t)}">${Array.from({ length: state.rounds }, (_, r) =>
+          `<option${(k.round || state.rounds) === r + 1 ? " selected" : ""}>${r + 1}</option>`).join("")}</select>`;
+    }).join("");
+  $("board-" + state.board).checked = true;
+  $("lambda").value = String(state.lambda);
+  $("rank-by").value = state.rankBy;
+  $("setup-msg").textContent = "";
+  $("copy-msg").textContent = "";
+  $("setup").showModal();
+}
+
+function saveSetup() {
+  const teams = state.teams.map((_, i) => $("team-" + i).value.trim() || `Team ${i + 1}`);
+  const meEl = document.querySelector('input[name="me"]:checked');
+  const keepers = [], bad = [];
+  const byName = new Map(players.map((p) => [norm(p.name), p]));
+  teams.forEach((t, i) => {
+    const el = $("keep-" + i), name = el.value.trim();
+    el.classList.remove("bad");
+    if (!name) return;
+    const p = byName.get(norm(name));
+    if (!p) { el.classList.add("bad"); bad.push(name); return; }
+    keepers.push({ team: i, playerId: p.id, name: p.name, round: +$("keepr-" + i).value });
+  });
+  if (bad.length) { $("setup-msg").textContent = `Not on the board: ${bad.join(", ")}. Pick a name from the list.`; return; }
+  const dupRound = keepers.find((k, i) => keepers.some((o, j) => j < i && o.team === k.team && o.round === k.round));
+  if (dupRound) { $("setup-msg").textContent = "Two keepers use the same pick."; return; }
+  const board = document.querySelector('input[name="board"]:checked').value;
+  const rounds = +$("rounds").value;
+  if (rounds !== state.rounds) state.owners = null;
+  Object.assign(state, { teams, me: meEl ? +meEl.value : state.me, keepers, rounds,
+                         lambda: +$("lambda").value, rankBy: $("rank-by").value });
+  for (const k of keepers) state.names[k.playerId] = k.name;
+  if (board !== state.board && BOARDS[board]) { state.board = board; buildPlayers(); }
+  saveState();
+  $("setup").close();
+  refresh();
+  toast("Setup saved");
+}
+
+// ---------------------------------------------------------------------------
+// Toast
+// ---------------------------------------------------------------------------
+let toastTimer = null;
+function toast(msg, withUndo) {
+  const t = $("toast");
+  t.innerHTML = `<span>${esc(msg)}</span>${withUndo ? '<button type="button" id="toast-undo">Undo</button>' : ""}`;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 4500);
+}
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
+function wire() {
+  const input = $("pick-input");
+  input.addEventListener("input", () => { suggIdx = 0; renderSuggest(); });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); suggIdx = Math.min(suggIdx + 1, sugg.length); renderSuggest(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); suggIdx = Math.max(0, suggIdx - 1); renderSuggest(); }
+    else if (e.key === "Enter") { e.preventDefault(); if (input.value.trim()) chooseSuggestion(suggIdx); }
+    else if (e.key === "Escape") { input.value = ""; renderSuggest(); }
+  });
+  $("suggest").addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li[data-i]");
+    if (li) { e.preventDefault(); chooseSuggestion(+li.dataset.i); }
+  });
+  document.addEventListener("keydown", (e) => {
+    const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if (e.key === "/" && !typing && !$("setup").open) { e.preventDefault(); input.focus(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === "z" && (!typing || !input.value) && !$("setup").open) { e.preventDefault(); undo(); }
+  });
+  document.addEventListener("click", (e) => {
+    const d = e.target.closest("[data-draft]");
+    if (d) { draftPlayer(d.dataset.draft); return; }
+    if (e.target.id === "toast-undo") { $("toast").hidden = true; undo(); return; }
+    const cell = e.target.closest("[data-cell]");
+    if (cell) { editOverall = +cell.dataset.cell; renderBoard(); return; }
+    const rm = e.target.closest("[data-remove]");
+    if (rm) { const o = rm.dataset.remove; editOverall = null; if (o) removePick(+o); else renderBoard(); }
+    const fr = e.target.closest("[data-open-setup]");
+    if (fr) openSetup();
+  });
+  document.addEventListener("change", (e) => {
+    const p = e.target.closest("[data-punt]");
+    if (p) { if (p.checked) state.punt[p.dataset.punt] = true; else delete state.punt[p.dataset.punt]; saveState(); refresh(); }
+  });
+  $("undo-btn").addEventListener("click", undo);
+  $("setup-btn").addEventListener("click", openSetup);
+  $("setup-save").addEventListener("click", saveSetup);
+  $("order-apply").addEventListener("click", () => {
+    const names = $("order-paste").value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    names.slice(0, N_TEAMS).forEach((n, i) => { $("team-" + i).value = n; });
+    $("setup-msg").textContent = names.length === N_TEAMS ? "Names filled in. Save to keep them."
+      : `Filled ${Math.min(names.length, N_TEAMS)} of ${N_TEAMS} names.`;
+  });
+  $("copy-state").addEventListener("click", () => {
+    const text = JSON.stringify(state);
+    const done = () => { $("copy-msg").textContent = "Copied. Paste it into the same box on the other device."; };
+    navigator.clipboard?.writeText(text).then(done, () => {
+      $("import-state").value = text; $("import-state").select();
+      $("copy-msg").textContent = "Copy blocked here: the state is selected in the box below.";
+    });
+  });
+  $("load-state").addEventListener("click", () => {
+    try {
+      const s = JSON.parse($("import-state").value);
+      if (!Array.isArray(s.teams)) throw new Error("not a draft state");
+      state = { ...defaultState(), ...s };
+      buildPlayers(); saveState(); $("setup").close(); refresh(); toast("Draft state loaded");
+    } catch (e) { $("setup-msg").textContent = `That is not a copied draft state (${e.message}).`; }
+  });
+  let clearArmed = false;
+  $("clear-picks").addEventListener("click", () => {
+    const b = $("clear-picks");
+    if (!clearArmed) {
+      clearArmed = true; b.textContent = "Click again to clear every pick";
+      setTimeout(() => { clearArmed = false; b.textContent = "Clear all picks"; }, 4000);
+      return;
+    }
+    clearArmed = false; b.textContent = "Clear all picks";
+    Object.assign(state, { picks: {}, keeperFlags: {}, log: [] });
+    saveState(); $("setup").close(); refresh(); toast("All picks cleared");
+  });
+  for (const t of ["board", "players", "teams"]) {
+    $("tab-" + t).addEventListener("click", () => { tab = t; renderTab(); });
+  }
+  for (const id of ["pl-q", "pl-pos", "pl-sort", "pl-taken"]) $(id).addEventListener("input", renderPlayers);
+  $("sync-btn").addEventListener("click", syncEspn);
+  $("auto-sync").addEventListener("change", (e) => {
+    clearInterval(autoTimer);
+    if (e.target.checked) { syncEspn(); autoTimer = setInterval(syncEspn, 5000); }
+  });
+}
+
+function renderFirstRun() {
+  const fresh = state.teams.every((t, i) => t === (i === state.me ? "You" : `Team ${i + 1}`)) && !state.keepers.length;
+  $("first-run").innerHTML = fresh
+    ? `<div class="callout"><p>Before the draft, enter team names in draft order and each team's keeper with the round it costs.</p>
+       <button class="btn primary" type="button" data-open-setup>Open setup</button></div>` : "";
+}
+
+(async function start() {
+  wire();
+  try {
+    await loadData();
+  } catch (e) {
+    $("recs").innerHTML = `<li class="rec"><span></span><div>Could not load the player board: ${esc(e.message)}. Run <code>python draft_board.py --window projected --out draft_board-projected.csv</code>, then reload.</div></li>`;
+    return;
+  }
+  if (!BOARDS[state.board]) state.board = "projected";
+  buildPlayers();
+  refresh();
+  probeEspn();
+})();
+</script>
+</body>
+</html>

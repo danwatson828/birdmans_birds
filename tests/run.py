@@ -29,6 +29,7 @@ from . import checks_analyses      # noqa: F401
 from . import checks_mcp          # noqa: F401
 from . import checks_api           # noqa: F401
 from . import checks_design        # noqa: F401
+from . import checks_draft         # noqa: F401
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = PROJECT_ROOT / "nba.duckdb"

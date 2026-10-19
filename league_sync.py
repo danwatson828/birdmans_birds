@@ -180,6 +180,62 @@ def extract_draft_settings(raw: dict) -> dict:
     }
 
 
+def fetch_live_draft(league_id: int, season: int, swid: str, s2: str) -> dict:
+    """Raw draft state: every pick slot, the teams, and the configured order.
+
+    One request, three views. mTeam carries the team names the draft page
+    shows; mSettings carries pickOrder and the keeper rule; mDraftDetail is
+    the only working source of picks (espn_api's League.draft is empty for
+    basketball -- see draft_assistant.fetch_live_picks).
+    """
+    r = requests.get(f"{LM_API}/{season}/segments/0/leagues/{league_id}",
+                     headers=UA, cookies={"SWID": braced(swid), "espn_s2": s2},
+                     params={"view": ["mDraftDetail", "mTeam", "mSettings"]},
+                     timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def extract_live_draft(raw: dict) -> dict:
+    """The draft as ESPN has it right now, in the shape the draft page reads.
+
+    Two traps, both verified against this league's payload before:
+      * an unmade pick carries playerId = -1, not null -- the test is > 0;
+      * picks are listed for every slot from the start, so a slot's teamId is
+        the real owner even after a traded pick, which the snake formula
+        cannot know. The page uses these owners when they are present.
+    """
+    ds = (raw.get("settings") or {}).get("draftSettings") or {}
+    detail = raw.get("draftDetail") or {}
+    teams = []
+    for t in raw.get("teams") or []:
+        name = t.get("name") or " ".join(
+            x for x in (t.get("location"), t.get("nickname")) if x).strip()
+        teams.append({"team_id": t.get("id"), "abbrev": t.get("abbrev"),
+                      "name": name or f"Team {t.get('id')}"})
+    picks = []
+    for p in detail.get("picks") or []:
+        pid = p.get("playerId")
+        picks.append({
+            "overall": p.get("overallPickNumber"),
+            "round": p.get("roundId"),
+            "round_pick": p.get("roundPickNumber"),
+            "team_id": p.get("teamId"),
+            "espn_player_id": pid if isinstance(pid, int) and pid > 0 else None,
+            "keeper": bool(p.get("keeper") or p.get("reservedForKeeper")),
+        })
+    picks.sort(key=lambda x: x["overall"] or 0)
+    return {
+        "teams": teams,
+        "pick_order": ds.get("pickOrder") or [],
+        "keeper_count": ds.get("keeperCount"),
+        "picks": picks,
+        "made": sum(1 for p in picks if p["espn_player_id"]),
+        "drafted": detail.get("drafted"),
+        "in_progress": detail.get("inProgress"),
+    }
+
+
 def extract_league_meta(raw: dict, lg: League) -> dict:
     st = raw.get("settings") or {}
     sched = st.get("scheduleSettings") or {}
