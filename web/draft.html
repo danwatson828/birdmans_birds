@@ -184,6 +184,18 @@ h2 { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: u
 .callout p { margin: 0; flex: 1 1 260px; }
 
 /* ---- call sheet ---------------------------------------------------------- */
+.pos-filter { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: var(--s2); }
+.pos-filter button {
+  border: 1px solid var(--rule); background: var(--card); color: var(--ink-2); border-radius: 999px;
+  padding: 4px 12px; font-weight: 700; font-size: 12.5px; cursor: pointer;
+}
+.pos-filter button:hover { background: var(--sunken); }
+.pos-filter button[aria-pressed="true"] { background: var(--sec); border-color: var(--sec); color: var(--on-sec); }
+.pos-filter button .ct { font-family: var(--f-num); font-weight: 500; opacity: .75; margin-left: 4px; font-size: 11.5px; }
+.recs-scroll { max-height: min(78vh, 980px); overflow-y: auto; overscroll-behavior: contain; }
+.rec .empty { grid-column: 1 / -1; color: var(--muted); }
+/* Four hundred rows: let the browser skip laying out the ones scrolled away. */
+.recs-scroll .rec { content-visibility: auto; contain-intrinsic-size: auto 86px; }
 #recs { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .rec {
   display: grid; grid-template-columns: 28px minmax(0, 1fr) 104px 92px auto;
@@ -359,7 +371,8 @@ textarea { width: 100%; min-height: 70px; border: 1px solid var(--rule); border-
   <section style="min-width:0">
     <div id="first-run"></div>
     <div class="sec-head"><h2>Your call sheet</h2><span class="sub" id="recs-sub"></span></div>
-    <div class="panel"><ol id="recs"></ol></div>
+    <div class="pos-filter" id="recs-filter" role="group" aria-label="Show positions"></div>
+    <div class="panel recs-scroll" id="recs-scroll"><ol id="recs"></ol></div>
   </section>
 
   <aside style="min-width:0">
@@ -486,7 +499,7 @@ function defaultState() {
     log: [],            // overalls in the order they were entered, for Undo
     names: {},          // playerId -> name, so a pick shows even off-board
     extra: [],          // rows for players not on the board
-    punt: {}, owners: null, espnSyncedAt: null, rankBy: "gain",
+    punt: {}, owners: null, espnSyncedAt: null, rankBy: "gain", recsPos: "",
   };
 }
 function loadState() {
@@ -663,27 +676,56 @@ function statLine(p) {
     + (p.est ? "estimate" : `${Math.round(p.gp)} gp`);
 }
 
+let lastRecsKey = null;
 function renderRecs() {
   const r = result, box = $("recs");
   if (r.done || !r.myNext) {
     $("recs-sub").textContent = r.done ? "The draft is complete." : "You have no picks left.";
+    $("recs-filter").innerHTML = "";
     box.innerHTML = "";
     return;
   }
-  const pool = r.candidates.filter((c) => c.feasible);
-  if (state.rankBy === "value") pool.sort((a, b) => (b.player.value || -99) - (a.player.value || -99));
-  const list = pool.slice(0, 10);
-  const top = Math.max(0.01, ...list.map((c) => c.gain));
+  // Every available player, in call-sheet order. The number on each row is
+  // his place in the WHOLE sheet, so filtering to centres still shows how
+  // each one ranks against everyone. Players who would leave a starting slot
+  // unfillable sink to the bottom with a tag rather than vanishing.
+  const pool = r.candidates.slice();
+  if (state.rankBy === "value") {
+    pool.sort((a, b) => (b.feasible - a.feasible) || ((b.player.value || -99) - (a.player.value || -99)));
+  }
+  const ranked = pool.map((c, i) => ({ c, rank: i + 1 }));
+  const pos = state.recsPos || "";
+  const count = (q) => (q ? ranked.filter((x) => x.c.player.pos.includes(q)).length : ranked.length);
+  $("recs-filter").innerHTML = ["", ...BASE_POS].map((q) =>
+    `<button type="button" data-recpos="${q}" aria-pressed="${q === pos}">${q || "All"}<span class="ct">${count(q)}</span></button>`).join("");
+  const shown = pos ? ranked.filter((x) => x.c.player.pos.includes(pos)) : ranked;
+  const top = Math.max(0.01, ...shown.slice(0, 20).map((x) => x.c.gain));
+  if (lastRecsKey !== `${filledCount()}|${pos}`) { $("recs-scroll").scrollTop = 0; lastRecsKey = `${filledCount()}|${pos}`; }
   $("recs-sub").textContent = (state.rankBy === "value" ? "Ranked by board value. " : "") + (r.myTurn
     ? `Ranked for pick ${r.current}. % = chance he is still there at your next pick${r.horizon ? ` (${r.horizon} picks away)` : ""}.`
     : `Ranked for your pick at #${r.myNext.overall}. % = chance he reaches you.`);
-  box.innerHTML = list.map((c, i) => {
+  if (!shown.length) { box.innerHTML = `<li class="rec"><span class="empty">No ${esc(pos)} left on the board.</span></li>`; return; }
+  // The first screenful goes in now; the rest follows a frame later, so a
+  // pick redraws the part you are looking at without waiting on row 400.
+  const FIRST = 40, gen = ++recsGen;
+  box.innerHTML = rowsHtml(shown.slice(0, FIRST), r, top);
+  if (shown.length > FIRST) {
+    requestAnimationFrame(() => {
+      if (gen === recsGen) box.insertAdjacentHTML("beforeend", rowsHtml(shown.slice(FIRST), r, top));
+    });
+  }
+}
+
+let recsGen = 0;
+function rowsHtml(rows, r, top) {
+  return rows.map(({ c, rank }) => {
     const p = c.player, s = c.pSurvive;
     const risk = r.myTurn ? s < 0.35 : s < 0.5;
-    return `<li class="rec${i === 0 ? " top" : ""}">
-      <span class="n">${i + 1}</span>
+    const noSlot = c.feasible ? "" : `<span class="chip inj" title="Taking him would leave a starting slot you cannot fill with your remaining picks">no slot</span> `;
+    return `<li class="rec${rank === 1 ? " top" : ""}">
+      <span class="n">${rank}</span>
       <div class="who"><span class="nm">${esc(p.name)}</span><span class="meta">${esc(p.team)} · ${basePos(p)} · ESPN #${Number.isFinite(p.adp) ? p.adp : "–"}</span>
-        <div class="why">${flags(p)}${whyChips(c)}</div></div>
+        <div class="why">${noSlot}${flags(p)}${whyChips(c)}</div></div>
       <div class="gain"><span class="v">${signed(c.gain)} <small>cats/wk</small></span>
         <span class="bar"><i style="width:${Math.max(2, Math.min(100, 100 * c.gain / top))}%"></i></span></div>
       <div class="surv${risk ? " risk" : ""}"><b>${Math.round(100 * s)}%</b><br>${r.myTurn ? "there next turn" : "reaches you"}</div>
@@ -1105,6 +1147,8 @@ function wire() {
     const fr = e.target.closest("[data-open-setup]");
     if (fr) openSetup();
     if (e.target.closest("[data-punt-check]")) { runPuntCheck(); return; }
+    const rp = e.target.closest("[data-recpos]");
+    if (rp) { state.recsPos = rp.dataset.recpos; saveState(); renderRecs(); return; }
     const ap = e.target.closest("[data-apply-punt]");
     if (ap) { state.punt = { [ap.dataset.applyPunt]: true }; saveState(); refresh(); toast(`Punting ${LABEL[ap.dataset.applyPunt]}`); }
   });
