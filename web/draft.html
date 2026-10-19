@@ -1176,6 +1176,11 @@ function renderFirstRun() {
     return;
   }
   if (!BOARDS[state.board]) state.board = "projected";
+  // Served by the local app: offer the way back. The standalone copy has no
+  // app to go back to.
+  if (!window.DRAFT_DATA) {
+    $("setup-btn").insertAdjacentHTML("afterend", '<a class="btn" href="/?v=matchup">Back to app</a>');
+  }
   buildPlayers();
   refresh();
   probeEspn();

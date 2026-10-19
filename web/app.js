@@ -82,7 +82,15 @@ function Nav({ route, go }) {
         onClick: (e) => { e.preventDefault(); go(r.id); } },
       h("span", { className: "glyph", "aria-hidden": "true",
           dangerouslySetInnerHTML: { __html: iconSvg(r.icon, 15) } }), r.label)];
-  }));
+  }).concat([
+    // The live draft room is its own page, not a route in ROUTES: it also has
+    // to run as a standalone file (build_draft_page.py), so it lives outside
+    // the shell and this is a plain link to it. Fantasy is the last group, so
+    // it lands there.
+    h("a", { key: "draft-room", href: "/draft" },
+      h("span", { className: "glyph", "aria-hidden": "true",
+          dangerouslySetInnerHTML: { __html: iconSvg("ranking", 15) } }), "Live draft room"),
+  ]));
 }
 
 // The topbar says where you are and carries the one control that belongs to
