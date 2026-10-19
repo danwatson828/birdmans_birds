@@ -347,25 +347,28 @@
 
     const myRoster = rosters[me];
     const myLeft = queue.filter((s) => s.team === me).length;
-    const base = expectedWins(teamCats(myBaseVec), opps, weights);
     const baseP = meanProbs(teamCats(myBaseVec), opps);
+    const base = dot(weights, baseP);
+    const baseFilled = matchSlots(myRoster).filled;
     out.baseline = base;
 
     const cands = avail.map((p) => {
-      const vec = add(teamVec[me].slice(), p.vec);
-      const mine = teamCats(vec);
-      const ew = expectedWins(mine, opps, weights);
-      const pr = meanProbs(mine, opps);
+      const pr = meanProbs(teamCats(add(teamVec[me].slice(), p.vec)), opps);
       const m = matchSlots(myRoster.concat([p]));
-      const openAfter = SLOTS.length - m.filled;
       return {
-        player: p, gain: ew - base,
+        player: p, gain: dot(weights, pr) - base,
         catDelta: CATS.map((c, i) => pr[i] - baseP[i]),
-        fillsStarter: m.filled > matchSlots(myRoster).filled,
-        feasible: openAfter <= myLeft - 1,
+        fillsStarter: m.filled > baseFilled,
+        feasible: SLOTS.length - m.filled <= myLeft - 1,
         openAfter: m.open,
       };
     });
+    if (a.survival === false) {
+      for (const c of cands) { c.pSurvive = 1; c.score = c.gain - (c.feasible ? 0 : 100); }
+      cands.sort((x, y) => y.score - x.score);
+      out.candidates = cands;
+      return out;
+    }
 
     // Survival: picks by others before my NEXT chance at this player.
     let horizon, laterQ = -1;
@@ -389,6 +392,12 @@
     out.horizon = horizon;
     out.horizonLabel = myQ === 0 ? "there at your next pick" : "reaches your pick";
     return out;
+  }
+
+  function dot(w, p) {
+    let t = 0;
+    for (let c = 0; c < 9; c++) t += w[c] * p[c];
+    return t;
   }
 
   function adpKey(p) { return Number.isFinite(p.adp) ? p.adp : 900 + (p.rank || 0); }
@@ -498,7 +507,70 @@
     return { p, fallback };
   }
 
+  // ---------------------------------------------------------------------------
+  // Punt check
+  // ---------------------------------------------------------------------------
+  /** Play out every remaining pick: other teams by ESPN rank with the same
+   *  widening noise as `survival`, me by the engine with `punt`. Returns my
+   *  expected categories won per week against the eleven finished rosters,
+   *  counting ALL nine categories -- a punt has to win more overall, not just
+   *  stop caring about the one it gives up. */
+  function finishDraft(a, punt, seed) {
+    const slots = a.slots.map((s) => ({ ...s }));
+    const rand = rng(seed);
+    const taken = new Set(slots.filter((s) => s.playerId != null).map((s) => s.playerId));
+    const key = new Map();
+    for (const p of a.players) {
+      if (!taken.has(p.id)) key.set(p.id, adpKey(p) + (3 + 0.12 * Math.min(adpKey(p), 300)) * gauss(rand));
+    }
+    for (const s of slots) {
+      if (s.playerId != null) continue;
+      if (s.team === a.me) {
+        const r = recommend({ ...a, slots, punt, lambda: 0, survival: false });
+        s.playerId = r.candidates[0].player.id;
+      } else {
+        let best = null, bk = Infinity;
+        for (const [id, k] of key) if (k < bk) { bk = k; best = id; }
+        s.playerId = best;
+      }
+      key.delete(s.playerId);
+    }
+    const byId = new Map(a.players.map((p) => [p.id, p]));
+    const rosters = Array.from({ length: a.nTeams }, () => []);
+    for (const s of slots) { const p = byId.get(s.playerId); if (p) rosters[s.team].push(p); }
+    const cats = rosters.map((r) => teamCats(sumVec(r)));
+    const opps = cats.filter((_, t) => t !== a.me);
+    const pr = meanProbs(cats[a.me], opps);
+    return { catWins: dot(new Array(9).fill(1), pr), probs: pr };
+  }
+
+  /** Balanced against each single-category punt, over `seeds` paired
+   *  playouts. `step(i, n)` is called between playouts so a page can stay
+   *  responsive; it may return a promise. */
+  async function puntCheck(a, seeds = 3, step = null) {
+    const options = [null, ...CATS];
+    const totals = options.map(() => ({ catWins: 0, probs: new Float64Array(9) }));
+    let i = 0;
+    const n = options.length * seeds;
+    for (let s = 0; s < seeds; s++) {
+      for (let k = 0; k < options.length; k++) {
+        const cat = options[k];
+        // Same seed for every option, so each one faces the same room.
+        const r = finishDraft(a, cat ? { [cat]: true } : {}, 9001 + s);
+        totals[k].catWins += r.catWins / seeds;
+        for (let c = 0; c < 9; c++) totals[k].probs[c] += r.probs[c] / seeds;
+        if (step) await step(++i, n);
+      }
+    }
+    const base = totals[0].catWins;
+    return options.map((cat, k) => ({
+      punt: cat, label: cat ? CAT_LABEL[cat] : "Balanced",
+      catWins: totals[k].catWins, delta: totals[k].catWins - base,
+      probs: Array.from(totals[k].probs),
+    })).sort((x, y) => y.catWins - x.catWins);
+  }
+
   return { CATS, CAT_LABEL, SLOTS, LAMBDA, prepareBoard, buildSlots, snakeTeam,
-           recommend, matchSlots, teamCats, winProbs, contribution, sumVec,
+           recommend, matchSlots, puntCheck, finishDraft, teamCats, winProbs, contribution, sumVec,
            standings, rng, gauss, adpKey };
 });

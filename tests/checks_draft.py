@@ -89,11 +89,17 @@ out.probsInRange = r.myCats.every((c) => c.pWin > 0 && c.pWin < 1);
 // Punting a category must take it out of the objective entirely.
 const pr = E.recommend({ players, slots, me: 3, nTeams: 12, punt: { ftpct: true } });
 out.puntWeight = pr.weights[7];
-console.log(JSON.stringify(out));
+// The punt check plays the draft out; one playout per option keeps this quick.
+E.puntCheck({ players, slots, me: 3, nTeams: 12 }, 1).then((rows) => {
+  out.puntOptions = rows.length;
+  out.puntHasBalanced = rows.some((x) => x.punt === null);
+  out.puntSane = rows.every((x) => x.catWins > 0 && x.catWins < 9);
+  console.log(JSON.stringify(out));
+});
 """
 
 
-@check("draft engine: snake order, keepers, and a fast recommendation", group="draft")
+@check("draft engine: snake order, keepers, punt check, and a fast recommendation", group="draft")
 def draft_engine(con_unused):
     node = shutil.which("node")
     if not node:
@@ -123,6 +129,9 @@ def draft_engine(con_unused):
         problems.append("top pick infeasible or a win probability out of (0,1)")
     if o["puntWeight"] != 0:
         problems.append("punting FT% did not remove it from the objective")
+    if o["puntOptions"] != 10 or not o["puntHasBalanced"] or not o["puntSane"]:
+        problems.append(f"punt check returned {o['puntOptions']} options, "
+                        f"balanced={o['puntHasBalanced']}, sane={o['puntSane']}")
     if o["ms"] > 2000:
         problems.append(f"recommendation took {o['ms']} ms")
     return not problems, "; ".join(problems) or (

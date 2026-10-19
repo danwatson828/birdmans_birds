@@ -22,6 +22,8 @@ Usage:
     python league_sync.py --season 2026       # a specific ESPN season year
     python league_sync.py --free-agents 100
     python league_sync.py --json              # print the cache instead of prose
+    python league_sync.py --draft-order       # team names in pick order, one per
+                                              # line, to paste into the draft room
 """
 
 from __future__ import annotations
@@ -670,6 +672,8 @@ def main() -> int:
     ap.add_argument("--free-agents", type=int, default=50)
     ap.add_argument("--cache-dir", type=Path, default=CACHE_DIR)
     ap.add_argument("--json", action="store_true", help="print the cache as JSON")
+    ap.add_argument("--draft-order", action="store_true",
+                    help="print team names in draft order, one per line, and stop")
     args = ap.parse_args()
 
     load_dotenv(PROJECT_ROOT / ".env")
@@ -703,6 +707,21 @@ def main() -> int:
         team_id = team_id or f["team_id"]
         print(f"  using league_id={league_id} season={season} team_id={team_id} "
               f"({f['league_name']!r})")
+
+    if args.draft_order:
+        # Names alone on stdout so the output pastes straight into the draft
+        # room's Setup box; everything else goes to stderr.
+        d = extract_live_draft(fetch_live_draft(league_id, season, swid, s2))
+        names = {t["team_id"]: t["name"] for t in d["teams"]}
+        order = d["pick_order"] or [p["team_id"] for p in d["picks"] if p["round"] == 1]
+        for tid in order:
+            print(names.get(tid, f"Team {tid}"))
+        if team_id in order:
+            print(f"\nyou ({names.get(team_id)}) pick {order.index(team_id) + 1} of "
+                  f"{len(order)}", file=sys.stderr)
+        print("ESPN can show last season's order until the commissioner sets this "
+              "one; check it against the draft lobby.", file=sys.stderr)
+        return 0
 
     t0 = time.monotonic()
     cache = sync(league_id, season, swid, s2, team_id, args.free_agents)

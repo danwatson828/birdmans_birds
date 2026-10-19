@@ -24,6 +24,7 @@
  *
  *     node backtest_draft_engine.mjs --drafts 200 --slot 4
  *     node backtest_draft_engine.mjs --drafts 100 --slot 4 --opp board
+ *     node backtest_draft_engine.mjs --strategies board,engine50,engine50-ftpct
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -76,10 +77,15 @@ function draft(strategy, seed) {
     } else if (strategy === "board") {
       pick = avail.reduce((b, p) => (p.value > b.value ? p : b));
     } else {
-      const lambda = +strategy.replace("engine", "") / 100;
+      // "engine50" or "engine50-ftpct": wait-or-take x100, then any punted
+      // category. The scorers still count all nine, so a punt is judged on
+      // whether it wins more categories overall, not on the one it gives up.
+      const [head, ...punted] = strategy.split("-");
+      const lambda = +head.replace("engine", "") / 100;
+      const punt = Object.fromEntries(punted.map((c) => [c, true]));
       const slots = E.buildSlots({ nTeams: N_TEAMS, rounds: ROUNDS,
                                    picks: picks.map((id, k) => ({ overall: k + 1, playerId: id })) });
-      pick = E.recommend({ players: pool, slots, me: SLOT, nTeams: N_TEAMS, lambda, seed: i })
+      pick = E.recommend({ players: pool, slots, me: SLOT, nTeams: N_TEAMS, lambda, punt, seed: i })
         .candidates[0].player;
     }
     picks.push(pick.id);

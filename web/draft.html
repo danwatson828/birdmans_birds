@@ -241,6 +241,12 @@ h2 { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: u
 .pbar::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--ink-2); opacity: .5; }
 .cat.punted { opacity: .45; }
 .punt { font-size: 11px; display: inline-flex; gap: 3px; align-items: center; color: var(--muted); cursor: pointer; }
+.puntbox { border-top: 1px solid var(--rule-2); padding: var(--s3) var(--s4); display: grid; gap: var(--s2); }
+.puntbox p { margin: 0; }
+.punt-rows { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.punt-rows .best { color: var(--ink); font-weight: 700; }
+.punt-rows .up { color: var(--win); }
+.punt-rows .down { color: var(--loss); }
 .roster { border-top: 1px solid var(--rule-2); padding: var(--s3) var(--s4); display: grid; gap: 3px; }
 .slotrow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: var(--s2); font-size: 13px; align-items: baseline; }
 .slotrow .sl { font-family: var(--f-num); font-size: 11.5px; color: var(--muted); }
@@ -721,8 +727,45 @@ function renderMine() {
       <div class="stat"><div class="k">League rank</div><div class="v">${ordinal(rank)}</div><div class="sub">of ${N_TEAMS}, on that measure</div></div>
     </div>
     <div class="cats">${cats}</div>
+    ${puntPanel()}
     <div class="roster">${slotRows}${bench}</div>
     <p class="help" style="padding:0 16px 12px">Every team's unmade picks are filled with the player ESPN's ranking expects there, so these numbers compare finished rosters.</p>`;
+}
+
+// ---- punt check: play out the rest of the draft balanced and with each punt
+let puntRun = null;      // {filled, rows} once run; {running, done, n} while running
+function filledCount() { return result.slots.filter((s) => s.playerId != null).length; }
+
+function puntPanel() {
+  if (result.done || !result.myNext) return "";
+  let body = "";
+  if (puntRun && puntRun.running) {
+    body = `<p class="help">Testing… ${puntRun.done} of ${puntRun.n} playouts</p>`;
+  } else if (puntRun && puntRun.rows) {
+    const rows = puntRun.rows, best = rows[0], bal = rows.find((r) => !r.punt);
+    const stale = puntRun.filled !== filledCount()
+      ? `<p class="help">Run at pick ${puntRun.filled + 1}. Picks have been made since, so run it again.</p>` : "";
+    const verdict = best.punt && best.delta > 0.05
+      ? `<p><b>Punting ${best.label}</b> wins about <b class="num">${best.delta.toFixed(2)}</b> more categories a week than staying balanced.
+         <button class="btn small primary" type="button" data-apply-punt="${best.punt}">Punt ${best.label}</button></p>`
+      : `<p><b>Stay balanced.</b> No punt beats it from here${best.punt ? "" : `: the best one, ${rows[1].label}, is ${Math.abs(rows[1].delta).toFixed(2)} categories a week worse`}.</p>`;
+    body = stale + verdict + `<div class="punt-rows">${rows.map((r) => `<span class="${r === best ? "best" : ""}">${r.punt ? "Punt " + r.label : "Balanced"}
+        <b class="num">${r.catWins.toFixed(2)}</b>${r.punt ? ` <span class="num ${r.delta >= 0 ? "up" : "down"}">${signed(r.delta)}</span>` : ""}</span>`).join("")}</div>`;
+  }
+  return `<div class="puntbox">
+    <div class="row"><button class="btn small" type="button" data-punt-check ${puntRun && puntRun.running ? "disabled" : ""}>Should I punt? Test it</button>
+    <span class="help">Plays out the rest of the draft balanced and with each punt, three times each, and counts all nine categories.</span></div>
+    ${body}</div>`;
+}
+
+async function runPuntCheck() {
+  puntRun = { running: true, done: 0, n: 30 };
+  renderMine();
+  const filled = filledCount();
+  const rows = await E.puntCheck({ players, slots: result.slots, me: state.me, nTeams: N_TEAMS }, 3,
+    (i, n) => new Promise((res) => { puntRun.done = i; puntRun.n = n; renderMine(); setTimeout(res, 0); }));
+  puntRun = { filled, rows };
+  renderMine();
 }
 
 function renderTab() {
@@ -1061,6 +1104,9 @@ function wire() {
     if (rm) { const o = rm.dataset.remove; editOverall = null; if (o) removePick(+o); else renderBoard(); }
     const fr = e.target.closest("[data-open-setup]");
     if (fr) openSetup();
+    if (e.target.closest("[data-punt-check]")) { runPuntCheck(); return; }
+    const ap = e.target.closest("[data-apply-punt]");
+    if (ap) { state.punt = { [ap.dataset.applyPunt]: true }; saveState(); refresh(); toast(`Punting ${LABEL[ap.dataset.applyPunt]}`); }
   });
   document.addEventListener("change", (e) => {
     const p = e.target.closest("[data-punt]");
