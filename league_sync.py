@@ -210,9 +210,15 @@ def extract_live_draft(raw: dict) -> dict:
     ds = (raw.get("settings") or {}).get("draftSettings") or {}
     detail = raw.get("draftDetail") or {}
     teams = []
+    # Owner names as a fallback: some payloads carry no team name at all.
+    members = {m.get("id"): (" ".join(x for x in (m.get("firstName"), m.get("lastName")) if x)
+                             or m.get("displayName"))
+               for m in raw.get("members") or []}
     for t in raw.get("teams") or []:
-        name = t.get("name") or " ".join(
+        owners = t.get("owners") or ([t["primaryOwner"]] if t.get("primaryOwner") else [])
+        name = (t.get("name") or " ".join(
             x for x in (t.get("location"), t.get("nickname")) if x).strip()
+            or next((members[o] for o in owners if members.get(o)), ""))
         teams.append({"team_id": t.get("id"), "abbrev": t.get("abbrev"),
                       "name": name or f"Team {t.get('id')}"})
     picks = []

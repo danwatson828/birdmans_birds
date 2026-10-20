@@ -1032,8 +1032,10 @@ async function applyEspn(r) {
   const order = new Set(r1).size === N_TEAMS ? r1 : (j.pick_order || []);
   if (order.length !== N_TEAMS) { setSync(false, `ESPN returned ${order.length} teams in the order; expected ${N_TEAMS}.`); return; }
   const idx = new Map(order.map((id, i) => [id, i]));
-  const names = new Map(j.teams.map((t) => [t.team_id, t.name]));
-  state.teams = order.map((id) => names.get(id) || `Team ${id}`);
+  // Never replace a name you typed with ESPN's "Team 7" placeholder.
+  const names = new Map(j.teams.filter((t) => t.name && !/^Team \d+$/.test(t.name)).map((t) => [t.team_id, t.name]));
+  const typed = new Map(state.teams.map((n, i) => [i, n]));
+  state.teams = order.map((id, i) => names.get(id) || typed.get(i) || `Team ${i + 1}`);
   if (idx.has(j.my_team_id)) state.me = idx.get(j.my_team_id);
   if (j.picks.length >= N_TEAMS * 10 && j.picks.length % N_TEAMS === 0) state.rounds = j.picks.length / N_TEAMS;
   // Slot owners from ESPN only when they are a snake with a few traded
