@@ -348,6 +348,7 @@ textarea { width: 100%; min-height: 70px; border: 1px solid var(--rule); border-
         <button class="btn" id="sync-btn" type="button">Sync from ESPN</button>
         <label class="punt"><input type="checkbox" id="auto-sync"> every 5s</label>
       </span>
+      <button class="btn primary" id="catchup-btn" type="button" title="Paste the picks made so far">Catch up</button>
       <button class="btn" id="undo-btn" type="button" title="Undo the last pick you entered (Ctrl+Z)">Undo</button>
       <button class="btn" id="setup-btn" type="button">Setup</button>
     </div>
@@ -474,6 +475,19 @@ textarea { width: 100%; min-height: 70px; border: 1px solid var(--rule); border-
   </form>
 </dialog>
 
+<dialog id="catchup" aria-labelledby="catchup-h">
+  <form method="dialog">
+    <div class="dlg-head"><h2 id="catchup-h">Catch up</h2><button class="btn small" value="cancel" type="submit">Close</button></div>
+    <div class="dlg-body">
+      <p class="help">Paste every pick made so far, in draft order, one per line: ESPN's pick history or draft log works as it is. Pick numbers, teams and positions on the line are ignored. Keepers you entered in Setup are skipped. This replaces the picks already entered here.</p>
+      <textarea id="catchup-text" style="min-height:240px" aria-label="Picks so far"></textarea>
+      <p class="help" id="catchup-msg"></p>
+    </div>
+    <div class="dlg-foot"><span class="help">Team order comes from Setup, snaking every round.</span>
+      <button class="btn primary" type="button" id="catchup-go">Fill in these picks</button></div>
+  </form>
+</dialog>
+
 <div id="toast" hidden></div>
 
 <!-- DATA -->
@@ -538,6 +552,7 @@ async function loadData() {
 }
 
 function buildPlayers() {
+  nameIndex = null;
   const rows = (BOARDS[state.board] || BOARDS.projected).concat(state.extra);
   players = E.prepareBoard(rows);
   byId = new Map(players.map((p) => [p.id, p]));
@@ -1010,17 +1025,23 @@ async function syncEspn() {
 async function applyEspn(r) {
   const j = await r.json();
   if (!r.ok) { setSync(false, j.detail || `ESPN sync failed (${r.status})`); return; }
-  const order = j.pick_order && j.pick_order.length ? j.pick_order
-    : j.picks.filter((p) => p.round === 1).map((p) => p.team_id);
+  // The order comes from who actually holds each round-1 pick. ESPN's
+  // settings pickOrder can still be last season's, and using it put picks
+  // under the wrong team columns.
+  const r1 = j.picks.filter((p) => p.round === 1).sort((a, b) => a.overall - b.overall).map((p) => p.team_id);
+  const order = new Set(r1).size === N_TEAMS ? r1 : (j.pick_order || []);
   if (order.length !== N_TEAMS) { setSync(false, `ESPN returned ${order.length} teams in the order; expected ${N_TEAMS}.`); return; }
   const idx = new Map(order.map((id, i) => [id, i]));
   const names = new Map(j.teams.map((t) => [t.team_id, t.name]));
   state.teams = order.map((id) => names.get(id) || `Team ${id}`);
   if (idx.has(j.my_team_id)) state.me = idx.get(j.my_team_id);
-  const maxRound = Math.max(0, ...j.picks.map((p) => p.round || 0));
-  if (maxRound) state.rounds = maxRound;
-  state.owners = j.picks.length === N_TEAMS * state.rounds
+  if (j.picks.length >= N_TEAMS * 10 && j.picks.length % N_TEAMS === 0) state.rounds = j.picks.length / N_TEAMS;
+  // Slot owners from ESPN only when they are a snake with a few traded
+  // picks. Anything further from a snake is placeholder data, and following
+  // it is what made the board run linearly.
+  const espnOwners = j.picks.length === N_TEAMS * state.rounds
     ? j.picks.map((p) => (idx.has(p.team_id) ? idx.get(p.team_id) : null)) : null;
+  state.owners = espnOwners && offSnake(espnOwners) <= N_TEAMS ? espnOwners : null;
   let added = 0;
   for (const p of j.picks) {
     if (!p.espn_player_id) continue;
@@ -1039,6 +1060,51 @@ async function applyEspn(r) {
   refresh();
   setSync(true, `Synced ${new Date().toLocaleTimeString()} · ${j.made} picks in ESPN`);
   if (!autoTimer) toast(`Synced from ESPN: ${j.made} picks. ESPN has you picking ${ordinal(state.me + 1)}.`);
+}
+
+function offSnake(owners) {
+  return owners.filter((t, i) => t !== E.snakeTeam(i, N_TEAMS)).length;
+}
+
+// ---------------------------------------------------------------------------
+// Catch up: paste the picks so far, in order, from ESPN's draft log
+// ---------------------------------------------------------------------------
+let nameIndex = null;
+function matchLine(line) {
+  if (!nameIndex) {
+    nameIndex = players.map((p) => ({ p, n: " " + norm(p.name) + " " }))
+      .sort((a, b) => b.n.length - a.n.length);
+  }
+  const l = " " + norm(line).replace(/\s+/g, " ") + " ";
+  const hit = nameIndex.find((x) => l.includes(x.n));
+  return hit ? hit.p : null;
+}
+
+function catchUp(text) {
+  const lines = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  Object.assign(state, { picks: {}, keeperFlags: {}, log: [] });
+  const slots = currentSlots();                 // keepers from Setup stay put
+  const used = new Set(slots.filter((s) => s.playerId).map((s) => s.playerId));
+  let placed = 0;
+  const skipped = [];
+  for (const line of lines) {
+    const p = matchLine(line);
+    if (!p) { skipped.push(line); continue; }
+    if (used.has(p.id)) continue;               // a keeper, or listed twice
+    const slot = slots.find((s) => s.playerId == null);
+    if (!slot) break;
+    slot.playerId = p.id;
+    state.picks[slot.overall] = p.id;
+    state.names[p.id] = p.name;
+    state.log.push(slot.overall);
+    used.add(p.id);
+    placed++;
+  }
+  saveState();
+  refresh();
+  const next = result.done ? "The draft is complete." : `Now on pick ${result.current}: ${state.teams[result.onClock.team]}.`;
+  $("catchup-msg").innerHTML = `<b>Placed ${placed} picks.</b> ${esc(next)} Check that matches ESPN.`
+    + (skipped.length ? `<br>Lines with no player I recognised (${skipped.length}): ${skipped.slice(0, 8).map(esc).join(" · ")}${skipped.length > 8 ? " …" : ""}` : "");
 }
 
 function setSync(ok, msg, quiet) {
@@ -1134,7 +1200,7 @@ function wire() {
   document.addEventListener("keydown", (e) => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
     if (e.key === "/" && !typing && !$("setup").open) { e.preventDefault(); input.focus(); }
-    if ((e.ctrlKey || e.metaKey) && e.key === "z" && (!typing || !input.value) && !$("setup").open) { e.preventDefault(); undo(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === "z" && (!typing || !input.value) && !$("setup").open && !$("catchup").open) { e.preventDefault(); undo(); }
   });
   document.addEventListener("click", (e) => {
     const d = e.target.closest("[data-draft]");
@@ -1157,6 +1223,8 @@ function wire() {
     if (p) { if (p.checked) state.punt[p.dataset.punt] = true; else delete state.punt[p.dataset.punt]; saveState(); refresh(); }
   });
   $("undo-btn").addEventListener("click", undo);
+  $("catchup-btn").addEventListener("click", () => { $("catchup-msg").textContent = ""; $("catchup").showModal(); $("catchup-text").focus(); });
+  $("catchup-go").addEventListener("click", () => catchUp($("catchup-text").value));
   $("setup-btn").addEventListener("click", openSetup);
   $("setup-save").addEventListener("click", saveSetup);
   $("order-apply").addEventListener("click", () => {
@@ -1220,6 +1288,7 @@ function renderFirstRun() {
     return;
   }
   if (!BOARDS[state.board]) state.board = "projected";
+  if (state.owners && offSnake(state.owners) > N_TEAMS) state.owners = null;
   // Served by the local app: offer the way back. The standalone copy has no
   // app to go back to.
   if (!window.DRAFT_DATA) {

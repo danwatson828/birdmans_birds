@@ -713,7 +713,10 @@ def main() -> int:
         # room's Setup box; everything else goes to stderr.
         d = extract_live_draft(fetch_live_draft(league_id, season, swid, s2))
         names = {t["team_id"]: t["name"] for t in d["teams"]}
-        order = d["pick_order"] or [p["team_id"] for p in d["picks"] if p["round"] == 1]
+        # Who holds each round-1 pick is the real order; settings.pickOrder can
+        # still be last season's.
+        r1 = [p["team_id"] for p in d["picks"] if p["round"] == 1]
+        order = r1 if len(set(r1)) == len(d["teams"]) else d["pick_order"]
         for tid in order:
             print(names.get(tid, f"Team {tid}"))
         if team_id in order:
