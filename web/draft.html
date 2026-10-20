@@ -479,7 +479,7 @@ textarea { width: 100%; min-height: 70px; border: 1px solid var(--rule); border-
   <form method="dialog">
     <div class="dlg-head"><h2 id="catchup-h">Catch up</h2><button class="btn small" value="cancel" type="submit">Close</button></div>
     <div class="dlg-body">
-      <p class="help">Paste every pick made so far, in draft order, one per line: ESPN's pick history or draft log works as it is. Pick numbers, teams and positions on the line are ignored. Keepers you entered in Setup are skipped. This replaces the picks already entered here.</p>
+      <p class="help">Paste ESPN's pick history table as it copies (Pick, Player, Team, RK). Each player goes to his pick number, so keepers land in their real slot, team names come from round 1, and each pick is credited to the team on its row. This replaces the picks already entered here.</p>
       <textarea id="catchup-text" style="min-height:240px" aria-label="Picks so far"></textarea>
       <p class="help" id="catchup-msg"></p>
     </div>
@@ -1082,17 +1082,42 @@ function matchLine(line) {
   return hit ? hit.p : null;
 }
 
+// ESPN's pick history copies as one cell per line:
+//   <pick #> / <player> / <NBA team> / <pos> / <fantasy team> / <rank>
+// so a player line is any non-number right after a number. The pick number
+// places him (keepers sit in their real slot even when the list is not in
+// order), and the fantasy team on his row says who owns that slot.
+function parseHistory(text) {
+  const L = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const isNum = (x) => /^\d+$/.test(x || "");
+  const out = [];
+  for (let i = 1; i < L.length; i++) {
+    if (!isNum(L[i - 1]) || isNum(L[i])) continue;
+    const overall = +L[i - 1];
+    if (overall < 1 || overall > N_TEAMS * state.rounds) continue;
+    const player = matchLine(L[i]);
+    // An unknown name still counts if the row has the table's shape, so one
+    // player missing from the board cannot shift every pick after him.
+    if (!player && !(L[i + 1] && L[i + 1].length <= 4 && isNum(L[i + 4]))) continue;
+    out.push({ overall, name: L[i], player, team: isNum(L[i + 3]) ? null : L[i + 3] || null });
+  }
+  return out;
+}
+
 function catchUp(text) {
+  const recs = parseHistory(text);
+  if (recs.length >= 2) return applyHistory(recs);
+  // No pick numbers: one pick per line, in order, next empty slot each time.
   const lines = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
   Object.assign(state, { picks: {}, keeperFlags: {}, log: [] });
-  const slots = currentSlots();                 // keepers from Setup stay put
+  const slots = currentSlots();
   const used = new Set(slots.filter((s) => s.playerId).map((s) => s.playerId));
   let placed = 0;
   const skipped = [];
   for (const line of lines) {
     const p = matchLine(line);
     if (!p) { skipped.push(line); continue; }
-    if (used.has(p.id)) continue;               // a keeper, or listed twice
+    if (used.has(p.id)) continue;
     const slot = slots.find((s) => s.playerId == null);
     if (!slot) break;
     slot.playerId = p.id;
@@ -1104,9 +1129,46 @@ function catchUp(text) {
   }
   saveState();
   refresh();
+  reportCatchUp(`Placed ${placed} picks in order.`, skipped);
+}
+
+function applyHistory(recs) {
+  // Round 1 names the teams in draft order.
+  for (const r of recs) if (r.overall <= N_TEAMS && r.team) state.teams[r.overall - 1] = r.team;
+  const teamIdx = new Map(state.teams.map((t, i) => [norm(t), i]));
+  Object.assign(state, { picks: {}, keeperFlags: {}, log: [] });
+  const owners = Array.from({ length: N_TEAMS * state.rounds }, (_, i) => E.snakeTeam(i, N_TEAMS));
+  let moved = 0;
+  const unlisted = [];
+  for (const r of recs.sort((a, b) => a.overall - b.overall)) {
+    let id;
+    if (r.player) id = r.player.id;
+    else {
+      id = "n:" + r.name.toLowerCase();
+      if (!state.extra.some((x) => x.name === r.name)) {
+        state.extra.push({ name: r.name, value_source: "unlisted", pos_str: "", pro_team: "", draft_rank: 250 });
+      }
+      unlisted.push(r.name);
+    }
+    state.picks[r.overall] = id;
+    state.names[id] = r.player ? r.player.name : r.name;
+    state.log.push(r.overall);
+    const ti = r.team ? teamIdx.get(norm(r.team)) : undefined;
+    if (ti != null && owners[r.overall - 1] !== ti) { owners[r.overall - 1] = ti; moved++; }
+  }
+  state.owners = moved ? owners : null;
+  if (unlisted.length) buildPlayers();
+  saveState();
+  refresh();
+  reportCatchUp(`Placed ${recs.length} picks by pick number and named the teams from round 1`
+    + (moved ? `; ${moved} pick(s) belong to a different team than the snake says, and are credited to the team on their row.` : "."),
+    unlisted.length ? unlisted.map((n) => n + " (not on the board, added as unlisted)") : []);
+}
+
+function reportCatchUp(head, skipped) {
   const next = result.done ? "The draft is complete." : `Now on pick ${result.current}: ${state.teams[result.onClock.team]}.`;
-  $("catchup-msg").innerHTML = `<b>Placed ${placed} picks.</b> ${esc(next)} Check that matches ESPN.`
-    + (skipped.length ? `<br>Lines with no player I recognised (${skipped.length}): ${skipped.slice(0, 8).map(esc).join(" · ")}${skipped.length > 8 ? " …" : ""}` : "");
+  $("catchup-msg").innerHTML = `<b>${esc(head)}</b> ${esc(next)} Check that matches ESPN.`
+    + (skipped.length ? `<br>Not placed or added (${skipped.length}): ${skipped.slice(0, 8).map(esc).join(" · ")}${skipped.length > 8 ? " …" : ""}` : "");
 }
 
 function setSync(ok, msg, quiet) {
@@ -1290,7 +1352,7 @@ function renderFirstRun() {
     return;
   }
   if (!BOARDS[state.board]) state.board = "projected";
-  if (state.owners && offSnake(state.owners) > N_TEAMS) state.owners = null;
+  if (state.owners && offSnake(state.owners) > 3 * N_TEAMS) state.owners = null;
   // Served by the local app: offer the way back. The standalone copy has no
   // app to go back to.
   if (!window.DRAFT_DATA) {
